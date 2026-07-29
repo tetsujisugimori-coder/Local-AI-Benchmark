@@ -18,6 +18,7 @@ function getSettings(request: BenchmarkRunRequest): BenchmarkSettings {
     executionCount: request.executionCount,
     runMode: request.runMode,
     stream: request.stream,
+    think: request.think,
   };
 }
 
@@ -64,6 +65,7 @@ export async function POST(request: Request) {
       displayName: model.displayName,
       runNumber: runRequest.runNumber,
       response: response.response,
+      thinking: response.thinking,
       settings: getSettings(runRequest),
       startedAt,
       finishedAt,
@@ -93,6 +95,7 @@ export async function POST(request: Request) {
       displayName: model.displayName,
       runNumber: runRequest.runNumber,
       response: "",
+      thinking: "",
       settings: getSettings(runRequest),
       startedAt,
       finishedAt: new Date().toISOString(),

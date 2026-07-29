@@ -65,10 +65,18 @@ export function ResultTable({
                 <p>{result.error.message}</p>
               </div>
             ) : (
-              <details className="responseDisclosure">
-                <summary>回答本文を表示</summary>
-                <pre>{result.response}</pre>
-              </details>
+              <>
+                <details className="responseDisclosure">
+                  <summary>回答本文を表示</summary>
+                  <pre>{result.response || "（回答本文は空です）"}</pre>
+                </details>
+                {result.thinking ? (
+                  <details className="thinkingDisclosure">
+                    <summary>思考過程を表示</summary>
+                    <pre>{result.thinking}</pre>
+                  </details>
+                ) : null}
+              </>
             )}
 
             <dl className="metricsGrid">
@@ -132,6 +140,10 @@ export function ResultTable({
                 <Metric
                   label="ストリーミング"
                   value={result.settings.stream ? "ON" : "OFF"}
+                />
+                <Metric
+                  label="思考モード"
+                  value={result.settings.think ? "ON" : "OFF"}
                 />
               </dl>
               {result.settings.systemPrompt ? (

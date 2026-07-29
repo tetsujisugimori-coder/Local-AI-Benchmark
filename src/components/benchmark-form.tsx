@@ -2,7 +2,7 @@ import type { BenchmarkSettings } from "@/types/benchmark";
 
 type NumberSetting = Exclude<
   keyof BenchmarkSettings,
-  "systemPrompt" | "runMode" | "stream"
+  "systemPrompt" | "runMode" | "stream" | "think"
 >;
 
 export function BenchmarkForm({
@@ -157,6 +157,22 @@ export function BenchmarkForm({
             </select>
           </label>
         </div>
+        <label className="switchField">
+          <input
+            type="checkbox"
+            checked={settings.think}
+            disabled={disabled}
+            onChange={(event) =>
+              onSettingsChange({ ...settings, think: event.target.checked })
+            }
+          />
+          <span>
+            思考モード
+            <small>
+              初期値はOFFです。対応モデルではONにすると推論過程を回答と分けて保存します。
+            </small>
+          </span>
+        </label>
         <label className="switchField">
           <input
             type="checkbox"

@@ -13,6 +13,7 @@ const validRequest = {
   executionCount: 1,
   runMode: "warm",
   stream: false,
+  think: false,
   runNumber: 1,
 };
 
@@ -21,6 +22,13 @@ test("有効な実行リクエストを正規化する", () => {
   assert.equal(parsed.prompt, "同じ質問");
   assert.equal(parsed.modelId, "phi4-mini:latest");
   assert.equal(parsed.stream, false);
+  assert.equal(parsed.think, false);
+});
+
+test("think未指定時は思考モードをOFFにする", () => {
+  const requestWithoutThink: Record<string, unknown> = { ...validRequest };
+  delete requestWithoutThink.think;
+  assert.equal(parseBenchmarkRunRequest(requestWithoutThink).think, false);
 });
 
 test("登録外モデルと範囲外設定を拒否する", () => {

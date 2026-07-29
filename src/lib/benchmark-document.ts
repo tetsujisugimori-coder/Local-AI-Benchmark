@@ -42,6 +42,7 @@ export function createBenchmarkDocument({
       executionCount: settings.executionCount,
       runMode: settings.runMode,
       stream: settings.stream,
+      think: settings.think,
     },
     results,
   };

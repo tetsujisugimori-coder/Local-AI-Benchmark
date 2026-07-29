@@ -15,6 +15,7 @@ const settings: BenchmarkSettings = {
   executionCount: 1,
   runMode: "warm",
   stream: false,
+  think: true,
 };
 
 const result: BenchmarkResult = {
@@ -22,6 +23,7 @@ const result: BenchmarkResult = {
   displayName: "Phi-4 Mini",
   runNumber: 1,
   response: "sample",
+  thinking: "reasoning",
   settings,
   startedAt: "2026-07-29T12:00:00.000Z",
   finishedAt: "2026-07-29T12:00:01.000Z",
@@ -49,6 +51,8 @@ test("個人環境情報を含めずschemaVersion 1のJSON文書を作る", () =
 
   assert.equal(document.schemaVersion, 1);
   assert.equal(document.results.length, 1);
+  assert.equal(document.request.think, true);
+  assert.equal(document.results[0].thinking, "reasoning");
   assert.equal(document.environment.platform, "");
   assert.equal(document.environment.cpu, "");
   assert.equal(

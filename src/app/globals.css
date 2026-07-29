@@ -579,12 +579,14 @@ button:disabled {
 }
 
 .responseDisclosure,
+.thinkingDisclosure,
 .settingsDisclosure {
   margin-top: 16px;
   border-top: 1px solid var(--line);
 }
 
 .responseDisclosure summary,
+.thinkingDisclosure summary,
 .settingsDisclosure summary {
   padding: 13px 0 8px;
   color: var(--accent-dark);
@@ -592,7 +594,8 @@ button:disabled {
   font-weight: 800;
 }
 
-.responseDisclosure pre {
+.responseDisclosure pre,
+.thinkingDisclosure pre {
   max-height: 420px;
   margin: 4px 0;
   padding: 14px;
@@ -604,6 +607,11 @@ button:disabled {
   color: #e7f8ef;
   font-size: 0.8rem;
   line-height: 1.65;
+}
+
+.thinkingDisclosure pre {
+  color: #26332d;
+  background: #edf1ee;
 }
 
 .metricsGrid,

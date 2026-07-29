@@ -30,6 +30,7 @@ const DEFAULT_SETTINGS: BenchmarkSettings = {
   executionCount: 1,
   runMode: "warm",
   stream: false,
+  think: false,
 };
 
 const INITIAL_MODELS: ModelAvailability[] = BENCHMARK_MODELS.map((model) => ({
@@ -89,6 +90,7 @@ function createClientError(
     displayName: definition?.displayName ?? modelId,
     runNumber,
     response: "",
+    thinking: "",
     settings,
     startedAt,
     finishedAt: new Date().toISOString(),
