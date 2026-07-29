@@ -145,4 +145,4 @@
 
 ### PR
 
-- PR URL: 作成後に追記予定。
+- PR #4: https://github.com/tetsujisugimori-coder/Local-AI-Benchmark/pull/4
