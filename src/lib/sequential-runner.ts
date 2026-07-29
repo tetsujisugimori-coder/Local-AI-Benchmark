@@ -7,11 +7,20 @@ export function createExecutionPlan(
   modelIds: readonly string[],
   executionCount: number,
 ) {
-  return modelIds.flatMap((modelId) =>
-    Array.from({ length: executionCount }, (_, index) => ({
+  return Array.from({ length: executionCount }, (_, index) =>
+    modelIds.map((modelId) => ({
       modelId,
       runNumber: index + 1,
     })),
+  ).flat();
+}
+
+export function remainingExecutionTasks(
+  tasks: readonly ExecutionTask[],
+  completedCount: number,
+) {
+  return tasks.slice(
+    Math.max(0, Math.min(completedCount, tasks.length)),
   );
 }
 

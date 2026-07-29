@@ -5,11 +5,11 @@ import {
   runSequentially,
 } from "../src/lib/sequential-runner.ts";
 
-test("モデル順と実行回数から逐次計画を作る", () => {
+test("モデルをラウンドロビン順に並べた実行計画を作る", () => {
   assert.deepEqual(createExecutionPlan(["model-a", "model-b"], 2), [
     { modelId: "model-a", runNumber: 1 },
-    { modelId: "model-a", runNumber: 2 },
     { modelId: "model-b", runNumber: 1 },
+    { modelId: "model-a", runNumber: 2 },
     { modelId: "model-b", runNumber: 2 },
   ]);
 });

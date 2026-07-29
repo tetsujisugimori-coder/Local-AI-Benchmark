@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { PHASE2_PROBLEM_SET } from "../src/data/phase2-problems.ts";
 import { parseBenchmarkRunRequest } from "../src/lib/validation.ts";
 
 const validRequest = {
@@ -50,5 +51,40 @@ test("空のプロンプトを拒否する", () => {
   assert.throws(
     () => parseBenchmarkRunRequest({ ...validRequest, prompt: "  " }),
     /プロンプト/,
+  );
+});
+
+test("runNumberがexecutionCountを超えるリクエストを拒否する", () => {
+  assert.throws(
+    () =>
+      parseBenchmarkRunRequest({
+        ...validRequest,
+        executionCount: 1,
+        runNumber: 2,
+      }),
+    /実行番号は実行回数以下/,
+  );
+});
+
+test("Phase 2問題選択を検証し、不正なproblemIdを拒否する", () => {
+  const problem = PHASE2_PROBLEM_SET.problems[0];
+  const parsed = parseBenchmarkRunRequest({
+    ...validRequest,
+    benchmarkMode: "phase2",
+    problemId: problem.id,
+    prompt: problem.prompt,
+    executionOrder: 3,
+  });
+  assert.equal(parsed.problemId, problem.id);
+  assert.equal(parsed.executionOrder, 3);
+
+  assert.throws(
+    () =>
+      parseBenchmarkRunRequest({
+        ...validRequest,
+        benchmarkMode: "phase2",
+        problemId: "missing-problem",
+      }),
+    /登録されていないPhase 2問題/,
   );
 });

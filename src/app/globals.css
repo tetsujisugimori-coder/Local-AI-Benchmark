@@ -311,6 +311,106 @@ button:disabled {
   gap: 14px;
 }
 
+.modeOptions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 20px;
+}
+
+.modeOptions > label {
+  display: flex;
+  gap: 12px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fafbf7;
+  cursor: pointer;
+}
+
+.modeOptions input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+
+.modeOptions span {
+  display: grid;
+  gap: 5px;
+}
+
+.modeOptions small,
+.problemMeta,
+.scoringNotice {
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.problemDetails {
+  display: grid;
+  gap: 16px;
+  margin-top: 22px;
+  padding-top: 22px;
+  border-top: 1px solid var(--line);
+}
+
+.problemMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  font-size: 0.76rem;
+}
+
+.problemDetails h3,
+.problemDetails h4 {
+  margin: 0;
+}
+
+.problemPrompt {
+  max-height: 360px;
+  margin: 0;
+  padding: 16px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border-radius: 12px;
+  background: #102c23;
+  color: #e7f8ef;
+  font-size: 0.82rem;
+  line-height: 1.7;
+}
+
+.criteriaGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.criteriaGrid > div {
+  padding: 16px;
+  border-radius: 12px;
+  background: #f3f5f1;
+}
+
+.criteriaGrid ul {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding-left: 20px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.6;
+}
+
+.scoringNotice {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid #e6c575;
+  border-radius: 10px;
+  background: var(--warning-soft);
+  font-size: 0.8rem;
+}
+
 .modelCard {
   display: grid;
   gap: 10px;
@@ -524,6 +624,24 @@ button:disabled {
   min-height: 44px;
 }
 
+.downloadActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.secondaryDownloadButton {
+  min-height: 44px;
+  padding: 0 16px;
+  color: var(--accent-dark);
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+  font-weight: 800;
+}
+
 .resultsGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -607,6 +725,90 @@ button:disabled {
   color: #e7f8ef;
   font-size: 0.8rem;
   line-height: 1.65;
+}
+
+.scorePanel {
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid #b9d8ca;
+  border-radius: 12px;
+  background: #f1faf6;
+}
+
+.scoreSummary {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.scoreSummary span {
+  color: var(--accent-dark);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.scorePanel > dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 12px 0 0;
+}
+
+.scorePanel dt {
+  color: var(--muted);
+  font-size: 0.67rem;
+}
+
+.scorePanel dd {
+  margin: 3px 0 0;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.criterionScores {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.criterionScores li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 10px;
+  padding-top: 8px;
+  border-top: 1px solid #d2e7de;
+  font-size: 0.78rem;
+}
+
+.criterionScores small {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.manualScoreField {
+  display: grid;
+  gap: 6px;
+  margin-top: 14px;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.manualScoreField input {
+  width: 140px;
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid #99b9aa;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.unscoredNotice {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 0.78rem;
 }
 
 .thinkingDisclosure pre {
@@ -734,6 +936,8 @@ footer p {
   }
 
   .modelGrid,
+  .modeOptions,
+  .criteriaGrid,
   .resultsGrid,
   .settingsGrid,
   .statusColumns {
@@ -747,6 +951,14 @@ footer p {
   }
 
   .compactButton {
+    width: 100%;
+  }
+
+  .downloadActions {
+    width: 100%;
+  }
+
+  .secondaryDownloadButton {
     width: 100%;
   }
 
