@@ -47,7 +47,7 @@ Copy-Item .env.example .env.local
 ```dotenv
 OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_REQUEST_TIMEOUT_MS=300000
-NEXT_PUBLIC_GITHUB_REPOSITORY_URL=
+NEXT_PUBLIC_GITHUB_REPOSITORY_URL=https://github.com/tetsujisugimori-coder/Local-AI-Benchmark
 ```
 
 `.env.local`はGit管理されません。接続先URLへユーザー名、パスワード、APIキーを埋め込まないでください。
