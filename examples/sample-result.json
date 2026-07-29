@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "benchmarkId": "2026-07-29T12-00-00-000Z",
+  "createdAt": "2026-07-29T12:00:00.000Z",
+  "environment": {
+    "ollamaBaseUrl": "http://localhost:11434",
+    "appVersion": "0.1.0",
+    "platform": "",
+    "cpu": "",
+    "memory": ""
+  },
+  "request": {
+    "prompt": "ローカルAIの利点を簡潔に説明してください。",
+    "systemPrompt": "",
+    "temperature": 0,
+    "seed": 42,
+    "maxTokens": 512,
+    "contextLength": 4096,
+    "executionCount": 1,
+    "runMode": "warm",
+    "stream": false
+  },
+  "results": [
+    {
+      "modelId": "phi4-mini:latest",
+      "displayName": "Phi-4 Mini",
+      "runNumber": 1,
+      "response": "これは実測値ではないサンプル回答です。",
+      "settings": {
+        "systemPrompt": "",
+        "temperature": 0,
+        "seed": 42,
+        "maxTokens": 512,
+        "contextLength": 4096,
+        "executionCount": 1,
+        "runMode": "warm",
+        "stream": false
+      },
+      "startedAt": "2026-07-29T12:00:00.000Z",
+      "finishedAt": "2026-07-29T12:00:01.000Z",
+      "elapsedMs": 1000,
+      "totalDurationNs": 1000000000,
+      "loadDurationNs": 100000000,
+      "promptEvalCount": 10,
+      "promptEvalDurationNs": 100000000,
+      "evalCount": 20,
+      "evalDurationNs": 800000000,
+      "promptTokensPerSecond": 100,
+      "outputTokensPerSecond": 25,
+      "doneReason": "stop",
+      "error": null
+    }
+  ]
+}
