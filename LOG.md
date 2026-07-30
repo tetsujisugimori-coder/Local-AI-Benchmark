@@ -146,3 +146,80 @@
 ### PR
 
 - PR #4: https://github.com/tetsujisugimori-coder/Local-AI-Benchmark/pull/4
+
+## 2026-07-30 — PR #4 Memo-Nexus取り込み用比較メモJSONの修正
+
+### 問題となっていた旧形式
+
+- 旧形式はモデル1件につき`items`を1件生成し、問題文、評価説明、Phase 1の説明を各モデルの長い`content`文字列へ平坦化していた。
+- 同じ問題文と説明がモデル数だけ重複し、Memo-Nexus上で複数モデルの回答、速度、採点状態を1件のメモとして比較しにくかった。
+- `MemoNexusDocument`と`MemoNexusItem`はLocal-AI-Benchmark独自定義であり、Memo-Nexus本体の正式なインポート型との互換性を確認できていなかった。
+
+### 新しい比較メモJSONの構造
+
+- 1回のベンチマークにつき`items`を1件だけ生成する。
+- `content`は、問題文、実行条件、結果比較表、モデル別回答・thinking・評価、評価基準、期待条件、比較上の注意を持つMarkdown比較メモとした。
+- 問題文、実行条件、評価基準、期待条件はメモ全体へ1回だけ記載し、モデルごとに重複させない。
+- 処理時間は秒・小数第2位、tokens/secは小数第2位へ整形し、nullは「未取得」、点数nullは「未採点」、実行状態は日本語で表示する。
+- Phase 1の説明はモデル別本文から削除し、`trendSummary`へ1回だけ保持する。
+- `metadata`にはbenchmarkId、問題セット情報、問題情報、評価定義、期待条件、modelCount、および全実行の構造化データを保存する。
+- 各モデルのmetadataにはモデルID、表示名、runNumber、executionOrder、executionStatus、回答、thinking、error、開始・完了日時、正確な測定値、doneReason、自動点、手動点、scoringStatus、criterionScoresを保持する。
+- 型名を独自形式と明確にする`BenchmarkMemoExportDocument`、`BenchmarkMemoExportItem`、`BenchmarkMemoModelExport`へ変更した。
+- ダウンロードファイル名を`<実行日時>-<problemId>-memo-nexus.json`形式へ変更した。
+- UIのボタン名を「Memo-Nexus取り込み用比較メモJSON」へ変更した。
+
+### 重複を削除した内容
+
+- 問題文。
+- 実行条件。
+- 評価基準と期待する回答条件。
+- 評価上の共通注意。
+- Phase 1から得られたフィードバック。
+
+### 変更したファイル
+
+- `README.md`
+- `LOG.md`
+- `src/components/benchmark-dashboard.tsx`
+- `src/components/result-table.tsx`
+- `src/lib/memo-nexus.ts`
+- `src/types/benchmark.ts`
+- `tests/memo-nexus.test.ts`
+
+### 実装した機能
+
+- 4モデルを含む場合も`items.length === 1`となる1ベンチマーク1比較メモ変換。
+- Markdown表による全モデルの実行順、状態、処理時間、出力トークン、tokens/sec、自動点、手動点の比較。
+- completed、failed、aborted、not_runの日本語表示。
+- thinkingあり／なし、エラー、null測定値、長い回答、改行・引用符・バックスラッシュを安全に扱う変換。
+- 本文用の丸めた測定値とmetadata用の元の精密値の両立。
+- 実行日時、problemId、`memo-nexus`を含む安全なダウンロードファイル名。
+
+### テスト結果
+
+- `npm run check`: 成功。
+- TypeScript: 成功。
+- ESLint: 成功。
+- Nodeテスト: 25件すべて成功。
+- 4モデルでもitemsが1件、問題文の出現が1回、Phase 1説明の重複なし、全モデル名・回答、thinking有無、failed・aborted・not_run、null測定値、JSON再読込、metadata必須情報、丸め表示、metadata精密値、ファイル名を確認した。
+
+### ビルド結果
+
+- `npm run build`: 成功。
+- Next.js production build、TypeScript検査、ページデータ収集、静的ページ生成まで完了した。
+
+### Memo-Nexus本体の仕様確認結果
+
+- Local-AI-Benchmarkリポジトリ内にはMemo-Nexus本体の正式なインポート型またはインポート処理が存在しなかった。
+- 公開検索でも、今回の`title`、`date`、`items`、`trendSummary`構造に対応するMemo-Nexus本体の公式仕様を特定できなかった。
+- このため正式互換形式とは断定せず、「Memo-Nexus取り込み用比較メモJSON」という表記と独自エクスポート型名を使用する。
+- Memo-Nexus本体の型を利用した統合テストは実施していない。
+
+### 未実装事項
+
+- Memo-Nexus本体の正式なインポート型を用いた統合テスト。公式仕様または対象リポジトリの提供が必要。
+
+### 既知の制限
+
+- `title`、`date`、`items`、`trendSummary`の外枠は既存形式を維持しているが、Memo-Nexus本体への正式な取り込み互換性は未確認。
+- Markdownの描画結果はMemo-Nexus側のMarkdownレンダラー実装に依存する。

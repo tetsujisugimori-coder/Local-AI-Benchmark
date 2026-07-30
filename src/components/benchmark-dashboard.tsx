@@ -7,7 +7,10 @@ import {
   PHASE2_PROBLEM_SET,
 } from "@/data/phase2-problems";
 import { createBenchmarkDocument } from "@/lib/benchmark-document";
-import { createMemoNexusDocument } from "@/lib/memo-nexus";
+import {
+  createBenchmarkMemoExport,
+  createBenchmarkMemoFilename,
+} from "@/lib/memo-nexus";
 import {
   createExecutionPlan,
   remainingExecutionTasks,
@@ -489,14 +492,14 @@ export function BenchmarkDashboard({ githubUrl }: { githubUrl: string }) {
       problem,
       completedAt: new Date().toISOString(),
     });
-    const memoDocument = createMemoNexusDocument(document);
+    const memoDocument = createBenchmarkMemoExport(document);
     const blob = new Blob([JSON.stringify(memoDocument, null, 2)], {
       type: "application/json",
     });
     const url = URL.createObjectURL(blob);
     const link = window.document.createElement("a");
     link.href = url;
-    link.download = `${document.benchmarkId}-memo-nexus.json`;
+    link.download = createBenchmarkMemoFilename(document);
     link.click();
     URL.revokeObjectURL(url);
   };

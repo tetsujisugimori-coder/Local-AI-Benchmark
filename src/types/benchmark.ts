@@ -183,33 +183,52 @@ export type BenchmarkDocument = {
   answers?: BenchmarkResult[];
 };
 
-export type MemoNexusItem = {
-  title: string;
-  content: string;
-  metadata: {
-    problemId: string;
-    modelId: string;
-    modelName: string;
-    runNumber: number;
-    executionOrder: number | null;
-    executionStatus: ExecutionStatus;
-    measurements: {
-      elapsedMs: number;
-      promptTokens: number | null;
-      outputTokens: number | null;
-      outputTokensPerSecond: number | null;
-    };
+export type BenchmarkMemoModelExport = {
+  modelId: string;
+  displayName: string;
+  runNumber: number;
+  executionOrder: number | null;
+  executionStatus: ExecutionStatus;
+  response: string;
+  thinking: string;
+  error: BenchmarkError | null;
+  startedAt: string;
+  finishedAt: string;
+  measurements: {
+    elapsedMs: number;
+    promptEvalCount: number | null;
+    evalCount: number | null;
+    outputTokensPerSecond: number | null;
+    doneReason: string | null;
+  };
+  scoring: {
     automaticScore: number | null;
     manualScore: number | null;
     scoringStatus: ScoringStatus;
-    manualReviewItems: string[];
+    criterionScores: CriterionScore[];
   };
 };
 
-export type MemoNexusDocument = {
+export type BenchmarkMemoExportItem = {
+  title: string;
+  content: string;
+  metadata: {
+    benchmarkId: string;
+    problemSetId: string | null;
+    problemSetVersion: string | null;
+    problemId: string;
+    problemTitle: string;
+    modelCount: number;
+    evaluationCriteria: ProblemEvaluationCriterion[];
+    expectedAnswerConditions: string[];
+    models: BenchmarkMemoModelExport[];
+  };
+};
+
+export type BenchmarkMemoExportDocument = {
   title: string;
   date: string;
-  items: MemoNexusItem[];
+  items: BenchmarkMemoExportItem[];
   trendSummary: string;
 };
 

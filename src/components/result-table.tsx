@@ -58,7 +58,7 @@ export function ResultTable({
               type="button"
               onClick={onDownloadMemoNexus}
             >
-              Memo-Nexus JSON
+              Memo-Nexus取り込み用比較メモJSON
             </button>
           ) : null}
         </div>
