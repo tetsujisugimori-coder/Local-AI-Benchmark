@@ -168,8 +168,7 @@ export function createBenchmarkMemoExport(
   const criteria = document.evaluationCriteria ?? [];
   const expectedConditions = document.expectedAnswerConditions ?? [];
   const results = document.answers ?? document.results;
-  const content = [
-    `# ${document.problemTitle}`,
+  const comparisonMarkdown = [
     "## 問題文",
     document.request.prompt,
     "## 実行条件",
@@ -201,6 +200,8 @@ export function createBenchmarkMemoExport(
       : "- 未設定",
     "## 比較メモ",
     "自動採点は客観的な形式条件だけを対象とします。手動評価前の項目について、モデル間の正答性や品質差は確定していません。不要な思考ログの長さは加点しません。",
+    "## Phase 1から得られたフィードバック",
+    PHASE1_FEEDBACK,
   ].join("\n\n");
 
   return {
@@ -209,7 +210,9 @@ export function createBenchmarkMemoExport(
     items: [
       {
         title: document.problemTitle,
-        content,
+        summary: [
+          `${results.length}件の実行結果を、回答、測定値、採点状態とともに比較します。`,
+        ],
         metadata: {
           benchmarkId: document.benchmarkId,
           problemSetId: document.problemSetId ?? null,
@@ -223,11 +226,7 @@ export function createBenchmarkMemoExport(
         },
       },
     ],
-    trendSummary: [
-      PHASE1_FEEDBACK,
-      `Phase 2問題セット ${document.problemSetVersion ?? "不明"} の「${document.problemTitle}」を${results.length}件実行。`,
-      "モデル間の品質差は自動点だけで断定せず、未採点の評価観点を手動確認してください。",
-    ].join(" "),
+    trendSummary: comparisonMarkdown,
   };
 }
 

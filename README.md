@@ -2,7 +2,7 @@
 
 Ollama上の複数ローカルAIモデルへ同一プロンプトを順番に送り、回答、処理時間、トークン数、ロード時間、tokens/secを比較するローカルWebアプリです。
 
-Phase 1互換の自由入力に加え、Phase 2では版管理された8問の問題セット、客観条件の限定的な自動採点、手動評価、Memo-Nexus取り込み用の比較メモJSON出力に対応しています。クラウドAI APIや結果の外部送信は行いません。
+Phase 1互換の自由入力に加え、Phase 2では版管理された8問の問題セット、客観条件の限定的な自動採点、手動評価、Memo-Nexus用JSON出力に対応しています。クラウドAI APIや結果の外部送信は行いません。
 
 ## 対応モデル
 
@@ -107,9 +107,9 @@ npm start
 
 Phase 2結果では、問題セットID・版、問題ID・タイトル、評価観点、実行順、採点状態、自動点、手動点、完了日時を追加します。
 
-「Memo-Nexus取り込み用比較メモJSON」は、1回のベンチマークを`items`内の1件のMarkdown比較メモとして出力します。問題文、実行条件、評価基準は1回だけ記載し、複数モデルの測定値を比較表へ、回答・thinking・採点内容をモデル別セクションへまとめます。全モデルの正確な測定値、回答、エラー、採点情報は構造化された`metadata.models`にも保持します。
+「Memo-Nexus用JSON」は、1回のベンチマークを`items`内の1件として出力します。Memo-Nexus（Waypoint v0.4.0）のJSON取り込み処理に合わせ、比較Markdownをルートの`trendSummary`へ格納し、`items[0]`には必須の`title`、短い`summary`、構造化された`metadata`を格納します。問題文、実行条件、評価基準は1回だけ記載し、複数モデルの測定値を比較表へ、回答・thinking・採点内容をモデル別セクションへまとめます。全モデルの正確な測定値、回答、エラー、採点情報は`metadata.models`にも保持します。
 
-外枠は`title`、`date`、`items`、`trendSummary`です。ただし、このリポジトリおよび公開情報からMemo-Nexus本体の正式なインポート型を確認できていないため、正式互換形式とは断定していません。回答中の引用符、改行、バックスラッシュはJSON文字列として正しくエスケープされます。
+外枠は`title`、`date`、`items`、`trendSummary`です。互換性は提供されたWaypoint v0.4.0の`parsePastedJson`、`validateItNewsJsonPayload`、`buildItNewsNotes`、`normalizeItNewsItem`の挙動に基づいて確認しています。追加の`metadata`は取り込み時に無視されますが、エクスポートファイル内には保持されます。回答中の引用符、改行、バックスラッシュはJSON文字列として正しくエスケープされます。
 
 ## Phase 2問題セットと採点
 

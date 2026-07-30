@@ -223,3 +223,63 @@
 
 - `title`、`date`、`items`、`trendSummary`の外枠は既存形式を維持しているが、Memo-Nexus本体への正式な取り込み互換性は未確認。
 - Markdownの描画結果はMemo-Nexus側のMarkdownレンダラー実装に依存する。
+
+## 2026-07-30 — Waypoint v0.4.0取り込みコード確認後の互換修正
+
+### 確認できた取り込み仕様
+
+- Memo-Nexus（アプリ表示名Waypoint）v0.4.0の実装コード提供を受け、JSON貼り付け取り込み処理を確認した。
+- `parsePastedJson`は、ルートがオブジェクトで`items`が配列の場合にニュースJSONとして処理する。
+- `validateItNewsJsonPayload`は`items`が空でないことを要求する。
+- `buildItNewsNotes`はルートの`title`、`date`、`trendSummary`と`items`を使用して1件のメモを生成する。
+- `normalizeItNewsItem`は各itemの`title`または`heading`を見出しとして読み、`summary`等を本文要素として読む。
+- 旧エクスポートで使用していた`items[].content`と`items[].metadata`は、Waypoint v0.4.0のメモ本文生成では参照されない。
+
+### 追加で判明した問題
+
+- 直前の修正で1ベンチマーク1itemにはなったが、比較Markdownを`items[0].content`へ格納していたため、Waypoint v0.4.0へ貼り付けると比較本文が欠落する。
+- 構造化metadataはエクスポートJSONには残るが、Waypoint側のメモ本文には展開されない。
+
+### 互換修正
+
+- 比較Markdownを、Waypoint v0.4.0が本文へ展開するルートの`trendSummary`へ格納した。
+- `items`は1件を維持し、`items[0].title`へ問題タイトル、`items[0].summary`へ短い比較概要を格納した。
+- `items[0].metadata.models`には従来どおり全モデルの正確な回答、thinking、エラー、測定値、採点情報を保持した。
+- UIボタン名を、提供コードとの互換確認を反映して「Memo-Nexus用JSON」へ変更した。
+- READMEをWaypoint v0.4.0の具体的な取り込み関数とデータ配置に合わせて更新した。
+
+### 変更したファイル
+
+- `README.md`
+- `LOG.md`
+- `src/components/result-table.tsx`
+- `src/lib/memo-nexus.ts`
+- `src/types/benchmark.ts`
+- `tests/memo-nexus.test.ts`
+
+### 統合テスト
+
+- `tests/memo-nexus.test.ts`へ、Waypoint v0.4.0の`validateItNewsJsonPayload`、`buildItNewsNotes`、`normalizeItNewsItem`に相当する取り込み再現処理を追加した。
+- JSON再読み込み後、`items`が1件で見出しが有効であることを確認した。
+- Waypoint取り込み後の本文に結果比較表、全モデル名、全回答、thinking、各実行状態が残ることを確認した。
+- `items[].content`へ依存しないことを確認した。
+- 構造化metadataで元の精密値が失われないことを引き続き確認した。
+
+### テスト・ビルド結果
+
+- `npm run check`: 成功。
+- TypeScript: 成功。
+- ESLint: 成功。
+- Nodeテスト: 25件すべて成功。
+- `npm run build`: 成功。
+
+### 互換性確認結果
+
+- 提供されたWaypoint v0.4.0の貼り付けJSON取り込み処理との構造互換性を確認した。
+- ファイル選択によるJSON取り込みでも、ルートの`trendSummary`は本文へ展開される。
+
+### 未実装事項・既知の制限
+
+- Waypoint v0.4.0のブラウザUIを実際に起動したE2E取り込みテストは実施していない。
+- `metadata`はWaypoint v0.4.0のメモ本文へ展開されないため、正確な構造化データは元のエクスポートJSONを保管して参照する必要がある。
+- Waypoint側の取り込み仕様が将来変更された場合は、対応バージョンを再確認する必要がある。

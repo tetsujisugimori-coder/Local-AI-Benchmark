@@ -7,6 +7,7 @@ import {
   createBenchmarkMemoFilename,
 } from "../src/lib/memo-nexus.ts";
 import type {
+  BenchmarkMemoExportDocument,
   BenchmarkError,
   BenchmarkResult,
   BenchmarkSettings,
@@ -88,6 +89,35 @@ function createResult({
   };
 }
 
+function simulateWaypointPasteImport(payload: BenchmarkMemoExportDocument) {
+  assert.ok(Array.isArray(payload.items));
+  assert.ok(payload.items.length > 0);
+  const body = [
+    `# ${payload.title} ${payload.date}`,
+    "",
+    `日付: ${payload.date}`,
+    "",
+  ];
+  payload.items.forEach((item, index) => {
+    assert.ok(item.title.trim());
+    body.push(`${index + 1}. ${item.title}`, "");
+    item.summary
+      .flatMap((value) => String(value).split(/\r?\n/))
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .forEach((line) => body.push(`- ${line}`));
+    body.push("");
+  });
+  const trendLines = String(payload.trendSummary)
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (trendLines.length > 0) {
+    body.push("## 全体傾向", "", ...trendLines, "");
+  }
+  return body.join("\n").trim();
+}
+
 test("4モデルを1件の比較メモへまとめ、本文とmetadataに情報を保持する", () => {
   const problem = PHASE2_PROBLEM_SET.problems[0];
   const results = [
@@ -144,15 +174,18 @@ test("4モデルを1件の比較メモへまとめ、本文とmetadataに情報�
   const memo = createBenchmarkMemoExport(benchmark);
   const serialized = JSON.stringify(memo);
   const reloaded = JSON.parse(serialized) as typeof memo;
-  const content = reloaded.items[0].content;
+  const content = reloaded.trendSummary;
+  const importedBody = simulateWaypointPasteImport(reloaded);
 
   assert.equal(reloaded.items.length, 1);
+  assert.equal("content" in reloaded.items[0], false);
+  assert.equal(reloaded.items[0].summary.length, 1);
   assert.equal(content.split(problem.prompt).length - 1, 1);
-  assert.equal(content.includes("Phase 1では"), false);
   assert.equal(serialized.split("Phase 1では").length - 1, 1);
   for (const result of results) {
     assert.match(content, new RegExp(result.displayName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
     assert.ok(content.includes(result.response));
+    assert.ok(importedBody.includes(result.response));
   }
   assert.match(content, /Qwenの検証メモ/);
   assert.match(content, /記録なし/);
@@ -163,6 +196,8 @@ test("4モデルを1件の比較メモへまとめ、本文とmetadataに情報�
   assert.match(content, /未取得/);
   assert.match(content, /13\.14秒/);
   assert.match(content, /37\.41/);
+  assert.match(importedBody, /## 結果一覧/);
+  assert.match(importedBody, /\| 実行順 \| モデル \| 状態 \|/);
 
   const metadata = reloaded.items[0].metadata;
   assert.equal(metadata.benchmarkId, benchmark.benchmarkId);

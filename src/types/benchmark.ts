@@ -211,7 +211,7 @@ export type BenchmarkMemoModelExport = {
 
 export type BenchmarkMemoExportItem = {
   title: string;
-  content: string;
+  summary: string[];
   metadata: {
     benchmarkId: string;
     problemSetId: string | null;
