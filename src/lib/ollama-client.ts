@@ -2,8 +2,8 @@ import type {
   BenchmarkError,
   BenchmarkErrorCode,
   BenchmarkRunRequest,
-} from "@/types/benchmark";
-import { getRuntimeConfig } from "@/lib/runtime-config";
+} from "../types/benchmark.ts";
+import { getRuntimeConfig } from "./runtime-config.ts";
 
 type OllamaModelResponse = {
   name?: string;
@@ -26,6 +26,7 @@ export type InstalledOllamaModel = {
 
 export type OllamaGenerateResponse = {
   response: string;
+  thinking: string;
   doneReason: string | null;
   totalDurationNs: number | null;
   loadDurationNs: number | null;
@@ -37,6 +38,12 @@ export type OllamaGenerateResponse = {
 
 type OllamaGenerateChunk = {
   response?: unknown;
+  content?: unknown;
+  thinking?: unknown;
+  message?: {
+    content?: unknown;
+    thinking?: unknown;
+  };
   done?: unknown;
   done_reason?: unknown;
   total_duration?: unknown;
@@ -49,12 +56,12 @@ type OllamaGenerateChunk = {
 };
 
 export class OllamaClientError extends Error {
-  constructor(
-    public readonly code: BenchmarkErrorCode,
-    message: string,
-  ) {
+  public readonly code: BenchmarkErrorCode;
+
+  constructor(code: BenchmarkErrorCode, message: string) {
     super(message);
     this.name = "OllamaClientError";
+    this.code = code;
   }
 
   toBenchmarkError(): BenchmarkError {
@@ -234,6 +241,7 @@ export async function listInstalledModels() {
 function normalizeGenerateChunk(
   chunk: OllamaGenerateChunk,
   responseText: string,
+  thinkingText: string,
 ): OllamaGenerateResponse {
   if (typeof chunk.error === "string") {
     throw mapResponseError(500, chunk.error);
@@ -241,6 +249,7 @@ function normalizeGenerateChunk(
 
   return {
     response: responseText,
+    thinking: thinkingText,
     doneReason:
       typeof chunk.done_reason === "string" ? chunk.done_reason : null,
     totalDurationNs: optionalNumber(chunk.total_duration),
@@ -250,6 +259,27 @@ function normalizeGenerateChunk(
     evalCount: optionalNumber(chunk.eval_count),
     evalDurationNs: optionalNumber(chunk.eval_duration),
   };
+}
+
+function readResponseText(chunk: OllamaGenerateChunk) {
+  if (typeof chunk.response === "string") {
+    return chunk.response;
+  }
+  if (typeof chunk.content === "string") {
+    return chunk.content;
+  }
+  return typeof chunk.message?.content === "string"
+    ? chunk.message.content
+    : "";
+}
+
+function readThinkingText(chunk: OllamaGenerateChunk) {
+  if (typeof chunk.thinking === "string") {
+    return chunk.thinking;
+  }
+  return typeof chunk.message?.thinking === "string"
+    ? chunk.message.thinking
+    : "";
 }
 
 async function readStreamingResponse(response: Response) {
@@ -264,6 +294,7 @@ async function readStreamingResponse(response: Response) {
   const decoder = new TextDecoder();
   let buffer = "";
   let responseText = "";
+  let thinkingText = "";
   let finalChunk: OllamaGenerateChunk | null = null;
 
   const parseLine = (line: string) => {
@@ -284,9 +315,8 @@ async function readStreamingResponse(response: Response) {
     if (typeof chunk.error === "string") {
       throw mapResponseError(500, chunk.error);
     }
-    if (typeof chunk.response === "string") {
-      responseText += chunk.response;
-    }
+    responseText += readResponseText(chunk);
+    thinkingText += readThinkingText(chunk);
     finalChunk = chunk;
   };
 
@@ -311,7 +341,22 @@ async function readStreamingResponse(response: Response) {
     );
   }
 
-  return normalizeGenerateChunk(completedChunk, responseText);
+  return normalizeGenerateChunk(completedChunk, responseText, thinkingText);
+}
+
+function isThinkingUnsupported(error: unknown) {
+  if (!(error instanceof OllamaClientError)) {
+    return false;
+  }
+
+  const message = error.message.toLowerCase();
+  return (
+    message.includes("think") &&
+    (message.includes("not support") ||
+      message.includes("unsupported") ||
+      message.includes("does not support") ||
+      message.includes("invalid"))
+  );
 }
 
 export async function generateResponse(
@@ -319,50 +364,66 @@ export async function generateResponse(
   signal: AbortSignal,
 ) {
   return withOllamaTimeout(async (operationSignal) => {
-    const response = await ollamaFetch(
-      "/api/generate",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: request.modelId,
-          prompt: request.prompt,
-          system: request.systemPrompt || undefined,
-          stream: request.stream,
-          keep_alive: request.runMode === "cold" ? 0 : "5m",
-          options: {
-            temperature: request.temperature,
-            seed: request.seed,
-            num_predict: request.maxTokens,
-            num_ctx: request.contextLength,
-          },
-        }),
-      },
-      operationSignal,
-    );
+    const generate = async (think: boolean) => {
+      const response = await ollamaFetch(
+        "/api/generate",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: request.modelId,
+            prompt: request.prompt,
+            system: request.systemPrompt || undefined,
+            stream: request.stream,
+            think,
+            keep_alive: request.runMode === "cold" ? 0 : "5m",
+            options: {
+              temperature: request.temperature,
+              seed: request.seed,
+              num_predict: request.maxTokens,
+              num_ctx: request.contextLength,
+            },
+          }),
+        },
+        operationSignal,
+      );
 
-    if (request.stream) {
-      return readStreamingResponse(response);
-    }
+      if (request.stream) {
+        return readStreamingResponse(response);
+      }
 
-    let chunk: OllamaGenerateChunk;
+      let chunk: OllamaGenerateChunk;
+      try {
+        chunk = (await response.json()) as OllamaGenerateChunk;
+      } catch {
+        throw new OllamaClientError(
+          "INVALID_RESPONSE",
+          "Ollamaから不正なJSON応答が返されました。",
+        );
+      }
+
+      if (chunk.done !== true) {
+        throw new OllamaClientError(
+          "INVALID_RESPONSE",
+          "Ollamaの生成応答に必要な項目がありません。",
+        );
+      }
+
+      return normalizeGenerateChunk(
+        chunk,
+        readResponseText(chunk),
+        readThinkingText(chunk),
+      );
+    };
+
     try {
-      chunk = (await response.json()) as OllamaGenerateChunk;
-    } catch {
-      throw new OllamaClientError(
-        "INVALID_RESPONSE",
-        "Ollamaから不正なJSON応答が返されました。",
-      );
+      return await generate(request.think);
+    } catch (error) {
+      if (request.think && isThinkingUnsupported(error)) {
+        return generate(false);
+      }
+      throw error;
     }
-
-    if (typeof chunk.response !== "string" || chunk.done !== true) {
-      throw new OllamaClientError(
-        "INVALID_RESPONSE",
-        "Ollamaの生成応答に必要な項目がありません。",
-      );
-    }
-
-    return normalizeGenerateChunk(chunk, chunk.response);
   }, signal);
 }
 

@@ -18,7 +18,8 @@
     "contextLength": 4096,
     "executionCount": 1,
     "runMode": "warm",
-    "stream": false
+    "stream": false,
+    "think": false
   },
   "results": [
     {
@@ -26,6 +27,7 @@
       "displayName": "Phi-4 Mini",
       "runNumber": 1,
       "response": "これは実測値ではないサンプル回答です。",
+      "thinking": "",
       "settings": {
         "systemPrompt": "",
         "temperature": 0,
@@ -34,7 +36,8 @@
         "contextLength": 4096,
         "executionCount": 1,
         "runMode": "warm",
-        "stream": false
+        "stream": false,
+        "think": false
       },
       "startedAt": "2026-07-29T12:00:00.000Z",
       "finishedAt": "2026-07-29T12:00:01.000Z",

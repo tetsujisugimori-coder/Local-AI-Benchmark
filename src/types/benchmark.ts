@@ -48,6 +48,7 @@ export type BenchmarkSettings = {
   executionCount: number;
   runMode: RunMode;
   stream: boolean;
+  think: boolean;
 };
 
 export type BenchmarkRunRequest = BenchmarkSettings & {
@@ -61,6 +62,7 @@ export type BenchmarkResult = {
   displayName: string;
   runNumber: number;
   response: string;
+  thinking: string;
   settings: BenchmarkSettings;
   startedAt: string;
   finishedAt: string;
@@ -98,6 +100,7 @@ export type BenchmarkDocument = {
     executionCount: number;
     runMode: RunMode;
     stream: boolean;
+    think: boolean;
   };
   results: BenchmarkResult[];
 };

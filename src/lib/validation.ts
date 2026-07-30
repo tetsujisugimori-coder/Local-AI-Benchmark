@@ -59,6 +59,10 @@ export function parseBenchmarkRunRequest(value: unknown): BenchmarkRunRequest {
     throw new Error("ストリーミング設定が不正です。");
   }
 
+  if (value.think !== undefined && typeof value.think !== "boolean") {
+    throw new Error("思考モード設定が不正です。");
+  }
+
   return {
     modelId: value.modelId,
     prompt,
@@ -82,6 +86,7 @@ export function parseBenchmarkRunRequest(value: unknown): BenchmarkRunRequest {
     executionCount: readNumber(value.executionCount, "実行回数", 1, 20, true),
     runMode: value.runMode,
     stream: value.stream,
+    think: value.think ?? false,
     runNumber: readNumber(value.runNumber, "実行番号", 1, 20, true),
   };
 }
