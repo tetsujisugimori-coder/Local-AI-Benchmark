@@ -15,6 +15,8 @@ export function BenchmarkForm({
   onSettingsChange,
   onNumberChange,
   onSubmit,
+  promptReadOnly = false,
+  promptTitle = "共通プロンプト",
 }: {
   prompt: string;
   settings: BenchmarkSettings;
@@ -25,12 +27,14 @@ export function BenchmarkForm({
   onSettingsChange: (settings: BenchmarkSettings) => void;
   onNumberChange: (key: NumberSetting, value: number) => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+  promptReadOnly?: boolean;
+  promptTitle?: string;
 }) {
   return (
     <form className="workspace" onSubmit={onSubmit}>
       <section className="panel promptPanel" aria-labelledby="prompt-heading">
         <p className="stepLabel">STEP 02</p>
-        <h2 id="prompt-heading">共通プロンプト</h2>
+        <h2 id="prompt-heading">{promptTitle}</h2>
         <label className="field">
           <span>すべての選択モデルへ送る内容</span>
           <textarea
@@ -38,6 +42,7 @@ export function BenchmarkForm({
             maxLength={50_000}
             rows={9}
             disabled={disabled}
+            readOnly={promptReadOnly}
             placeholder="例：ローカルAIを利用する利点を3つ、簡潔に説明してください。"
             onChange={(event) => onPromptChange(event.target.value)}
           />

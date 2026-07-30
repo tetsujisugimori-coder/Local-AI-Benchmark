@@ -2,12 +2,22 @@
 
 import { useEffect, useRef, useState } from "react";
 import { BENCHMARK_MODELS, DEFAULT_SELECTED_MODEL_IDS } from "@/config/models";
+import {
+  getPhase2Problem,
+  PHASE2_PROBLEM_SET,
+} from "@/data/phase2-problems";
 import { createBenchmarkDocument } from "@/lib/benchmark-document";
 import {
+  createBenchmarkMemoExport,
+  createBenchmarkMemoFilename,
+} from "@/lib/memo-nexus";
+import {
   createExecutionPlan,
+  remainingExecutionTasks,
   runSequentially,
 } from "@/lib/sequential-runner";
 import type {
+  BenchmarkMode,
   BenchmarkError,
   BenchmarkProgress,
   BenchmarkResult,
@@ -19,6 +29,7 @@ import { AppHeader } from "@/components/app-header";
 import { BenchmarkForm } from "@/components/benchmark-form";
 import { ModelSelector } from "@/components/model-selector";
 import { ProgressPanel } from "@/components/progress-panel";
+import { ProblemSelector } from "@/components/problem-selector";
 import { ResultTable } from "@/components/result-table";
 
 const DEFAULT_SETTINGS: BenchmarkSettings = {
@@ -83,6 +94,7 @@ function createClientError(
   settings: BenchmarkSettings,
   startedAt: string,
   error: BenchmarkError,
+  executionOrder: number,
 ): BenchmarkResult {
   const definition = BENCHMARK_MODELS.find((model) => model.id === modelId);
   return {
@@ -105,6 +117,34 @@ function createClientError(
     outputTokensPerSecond: null,
     doneReason: null,
     error,
+    executionOrder,
+    executionStatus: error.code === "ABORTED" ? "aborted" : "failed",
+    scoringStatus: "unscored",
+    automaticScore: null,
+    manualScore: null,
+    criterionScores: [],
+  };
+}
+
+function createNotRunResult(
+  modelId: string,
+  runNumber: number,
+  settings: BenchmarkSettings,
+  executionOrder: number,
+): BenchmarkResult {
+  const createdAt = new Date().toISOString();
+  const result = createClientError(
+    modelId,
+    runNumber,
+    settings,
+    createdAt,
+    { code: "ABORTED", message: "中止後のため実行されませんでした。" },
+    executionOrder,
+  );
+  return {
+    ...result,
+    executionStatus: "not_run",
+    error: null,
   };
 }
 
@@ -114,6 +154,11 @@ export function BenchmarkDashboard({ githubUrl }: { githubUrl: string }) {
   const [selectedIds, setSelectedIds] = useState<string[]>([
     ...DEFAULT_SELECTED_MODEL_IDS,
   ]);
+  const [benchmarkMode, setBenchmarkMode] =
+    useState<BenchmarkMode>("freeform");
+  const [selectedProblemId, setSelectedProblemId] = useState(
+    PHASE2_PROBLEM_SET.problems[0].id,
+  );
   const [prompt, setPrompt] = useState("");
   const [settings, setSettings] =
     useState<BenchmarkSettings>(DEFAULT_SETTINGS);
@@ -125,10 +170,16 @@ export function BenchmarkDashboard({ githubUrl }: { githubUrl: string }) {
   const [benchmarkRequest, setBenchmarkRequest] = useState<{
     prompt: string;
     settings: BenchmarkSettings;
+    benchmarkMode: BenchmarkMode;
+    problemId: string | null;
   } | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const controllerRef = useRef<AbortController | null>(null);
   const settingsRef = useRef<HTMLDivElement>(null);
+  const selectedProblem =
+    getPhase2Problem(selectedProblemId) ?? PHASE2_PROBLEM_SET.problems[0];
+  const activePrompt =
+    benchmarkMode === "phase2" ? selectedProblem.prompt : prompt;
 
   const refreshSetup = async () => {
     setSetupLoading(true);
@@ -220,7 +271,7 @@ export function BenchmarkDashboard({ githubUrl }: { githubUrl: string }) {
       setFormError("Ollamaへ接続してから実行してください。");
       return;
     }
-    if (!prompt.trim()) {
+    if (!activePrompt.trim()) {
       setFormError("共通プロンプトを入力してください。");
       return;
     }
@@ -247,8 +298,10 @@ export function BenchmarkDashboard({ githubUrl }: { githubUrl: string }) {
     controllerRef.current = controller;
     setBenchmarkCreatedAt(createdAt);
     setBenchmarkRequest({
-      prompt,
+      prompt: activePrompt,
       settings: { ...settings },
+      benchmarkMode,
+      problemId: benchmarkMode === "phase2" ? selectedProblem.id : null,
     });
     setResults([]);
     setProgress({ ...EMPTY_PROGRESS, total });
@@ -257,9 +310,14 @@ export function BenchmarkDashboard({ githubUrl }: { githubUrl: string }) {
     const completedModels: string[] = [];
     const failedModels: string[] = [];
 
-    await runSequentially(
+    const completedResults = await runSequentially(
       tasks,
       async ({ modelId, runNumber }) => {
+        const executionOrder =
+          tasks.findIndex(
+            (task) =>
+              task.modelId === modelId && task.runNumber === runNumber,
+          ) + 1;
         const model = BENCHMARK_MODELS.find((item) => item.id === modelId);
         const runLabel = `${model?.displayName ?? modelId} / Run ${runNumber}`;
         setProgress((current) => ({ ...current, currentModel: runLabel }));
@@ -272,9 +330,13 @@ export function BenchmarkDashboard({ githubUrl }: { githubUrl: string }) {
             signal: controller.signal,
             body: JSON.stringify({
               ...settings,
-              prompt,
+              prompt: activePrompt,
               modelId,
               runNumber,
+              benchmarkMode,
+              problemId:
+                benchmarkMode === "phase2" ? selectedProblem.id : null,
+              executionOrder,
             }),
           });
 
@@ -311,6 +373,7 @@ export function BenchmarkDashboard({ githubUrl }: { githubUrl: string }) {
             settings,
             startedAt,
             benchmarkError,
+            executionOrder,
           );
         }
       },
@@ -339,6 +402,21 @@ export function BenchmarkDashboard({ githubUrl }: { githubUrl: string }) {
         },
       },
     );
+
+    const notRunResults = controller.signal.aborted
+      ? remainingExecutionTasks(tasks, completedResults.length).map(
+          (task, index) =>
+            createNotRunResult(
+              task.modelId,
+              task.runNumber,
+              settings,
+              completedResults.length + index + 1,
+            ),
+        )
+      : [];
+    if (notRunResults.length > 0) {
+      setResults([...completedResults, ...notRunResults]);
+    }
 
     setProgress((current) => ({
       ...current,
@@ -370,6 +448,13 @@ export function BenchmarkDashboard({ githubUrl }: { githubUrl: string }) {
       prompt: benchmarkRequest.prompt,
       settings: benchmarkRequest.settings,
       results,
+      benchmarkMode: benchmarkRequest.benchmarkMode,
+      problem:
+        benchmarkRequest.benchmarkMode === "phase2" &&
+        benchmarkRequest.problemId
+          ? getPhase2Problem(benchmarkRequest.problemId)
+          : null,
+      completedAt: new Date().toISOString(),
     });
     const blob = new Blob([JSON.stringify(document, null, 2)], {
       type: "application/json",
@@ -380,6 +465,62 @@ export function BenchmarkDashboard({ githubUrl }: { githubUrl: string }) {
     link.download = `${document.benchmarkId}.json`;
     link.click();
     URL.revokeObjectURL(url);
+  };
+
+  const downloadMemoNexus = () => {
+    if (
+      !setup ||
+      results.length === 0 ||
+      !benchmarkCreatedAt ||
+      !benchmarkRequest ||
+      benchmarkRequest.benchmarkMode !== "phase2" ||
+      !benchmarkRequest.problemId
+    ) {
+      return;
+    }
+    const problem = getPhase2Problem(benchmarkRequest.problemId);
+    if (!problem) {
+      return;
+    }
+    const document = createBenchmarkDocument({
+      createdAt: benchmarkCreatedAt,
+      ollamaBaseUrl: setup.baseUrl,
+      prompt: benchmarkRequest.prompt,
+      settings: benchmarkRequest.settings,
+      results,
+      benchmarkMode: "phase2",
+      problem,
+      completedAt: new Date().toISOString(),
+    });
+    const memoDocument = createBenchmarkMemoExport(document);
+    const blob = new Blob([JSON.stringify(memoDocument, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = window.document.createElement("a");
+    link.href = url;
+    link.download = createBenchmarkMemoFilename(document);
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const updateManualScore = (index: number, score: number | null) => {
+    setResults((current) =>
+      current.map((result, resultIndex) =>
+        resultIndex === index
+          ? {
+              ...result,
+              manualScore: score,
+              scoringStatus:
+                score === null
+                  ? result.automaticScore === null
+                    ? "manual_required"
+                    : "partial"
+                  : "manual_complete",
+            }
+          : result,
+      ),
+    );
   };
 
   const openSettings = () => {
@@ -418,6 +559,14 @@ export function BenchmarkDashboard({ githubUrl }: { githubUrl: string }) {
         </div>
       ) : null}
 
+      <ProblemSelector
+        mode={benchmarkMode}
+        problem={selectedProblem}
+        disabled={running}
+        onModeChange={setBenchmarkMode}
+        onProblemChange={setSelectedProblemId}
+      />
+
       <ModelSelector
         models={models}
         selectedIds={selectedIds}
@@ -427,7 +576,7 @@ export function BenchmarkDashboard({ githubUrl }: { githubUrl: string }) {
       />
 
       <BenchmarkForm
-        prompt={prompt}
+        prompt={activePrompt}
         settings={settings}
         disabled={running}
         submitDisabled={benchmarkDisabled}
@@ -436,6 +585,10 @@ export function BenchmarkDashboard({ githubUrl }: { githubUrl: string }) {
         onSettingsChange={setSettings}
         onNumberChange={updateNumber}
         onSubmit={runBenchmark}
+        promptReadOnly={benchmarkMode === "phase2"}
+        promptTitle={
+          benchmarkMode === "phase2" ? "選択した問題文" : "共通プロンプト"
+        }
       />
 
       {formError ? (
@@ -449,14 +602,20 @@ export function BenchmarkDashboard({ githubUrl }: { githubUrl: string }) {
         running={running}
         onCancel={cancelBenchmark}
       />
-      <ResultTable results={results} onDownload={downloadResults} />
+      <ResultTable
+        results={results}
+        benchmarkMode={benchmarkRequest?.benchmarkMode ?? benchmarkMode}
+        onDownload={downloadResults}
+        onDownloadMemoNexus={downloadMemoNexus}
+        onManualScoreChange={updateManualScore}
+      />
 
       <footer>
         <p>
           プロンプトと測定結果は、このアプリから外部AIサービスへ送信されません。
           通信先は設定されたOllama APIだけです。
         </p>
-        <p>ライセンス未設定 · Local-only Phase 1</p>
+        <p>ライセンス未設定 · Local-only Phase 2</p>
       </footer>
     </main>
   );

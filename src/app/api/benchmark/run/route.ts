@@ -1,6 +1,8 @@
 import { BENCHMARK_MODELS } from "@/config/models";
+import { getPhase2Problem } from "@/data/phase2-problems";
 import { calculateTokensPerSecond } from "@/lib/metrics";
 import { generateResponse, toBenchmarkError } from "@/lib/ollama-client";
+import { scorePhase2Answer } from "@/lib/scoring";
 import { parseBenchmarkRunRequest } from "@/lib/validation";
 import type {
   BenchmarkResult,
@@ -60,6 +62,18 @@ export async function POST(request: Request) {
   try {
     const response = await generateResponse(runRequest, request.signal);
     const finishedAt = new Date().toISOString();
+    const problem =
+      runRequest.benchmarkMode === "phase2" && runRequest.problemId
+        ? getPhase2Problem(runRequest.problemId)
+        : undefined;
+    const scoring = problem
+      ? scorePhase2Answer(problem, response.response)
+      : {
+          scoringStatus: "unscored" as const,
+          automaticScore: null,
+          manualScore: null,
+          criterionScores: [],
+        };
     const result: BenchmarkResult = {
       modelId: model.id,
       displayName: model.displayName,
@@ -86,6 +100,9 @@ export async function POST(request: Request) {
       ),
       doneReason: response.doneReason,
       error: null,
+      executionOrder: runRequest.executionOrder ?? 1,
+      executionStatus: "completed",
+      ...scoring,
     };
 
     return Response.json(result);
@@ -110,6 +127,13 @@ export async function POST(request: Request) {
       outputTokensPerSecond: null,
       doneReason: null,
       error: toBenchmarkError(error),
+      executionOrder: runRequest.executionOrder ?? 1,
+      executionStatus:
+        request.signal.aborted ? "aborted" : "failed",
+      scoringStatus: "unscored",
+      automaticScore: null,
+      manualScore: null,
+      criterionScores: [],
     };
 
     return Response.json(result);

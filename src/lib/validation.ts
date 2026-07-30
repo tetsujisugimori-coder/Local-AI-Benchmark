@@ -1,4 +1,5 @@
 import { BENCHMARK_MODELS } from "../config/models.ts";
+import { getPhase2Problem } from "../data/phase2-problems.ts";
 import type { BenchmarkRunRequest } from "../types/benchmark";
 
 const MODEL_IDS = new Set<string>(BENCHMARK_MODELS.map((model) => model.id));
@@ -63,6 +64,40 @@ export function parseBenchmarkRunRequest(value: unknown): BenchmarkRunRequest {
     throw new Error("思考モード設定が不正です。");
   }
 
+  const benchmarkMode = value.benchmarkMode ?? "freeform";
+  if (benchmarkMode !== "freeform" && benchmarkMode !== "phase2") {
+    throw new Error("ベンチマークモードが不正です。");
+  }
+
+  let problemId: string | null = null;
+  if (benchmarkMode === "phase2") {
+    if (typeof value.problemId !== "string") {
+      throw new Error("Phase 2のproblemIdを指定してください。");
+    }
+    const problem = getPhase2Problem(value.problemId);
+    if (!problem) {
+      throw new Error("登録されていないPhase 2問題です。");
+    }
+    if (prompt !== problem.prompt) {
+      throw new Error("Phase 2問題文が登録内容と一致しません。");
+    }
+    problemId = problem.id;
+  } else if (value.problemId !== undefined && value.problemId !== null) {
+    throw new Error("自由入力モードではproblemIdを指定できません。");
+  }
+
+  const executionCount = readNumber(
+    value.executionCount,
+    "実行回数",
+    1,
+    20,
+    true,
+  );
+  const runNumber = readNumber(value.runNumber, "実行番号", 1, 20, true);
+  if (runNumber > executionCount) {
+    throw new Error("実行番号は実行回数以下で指定してください。");
+  }
+
   return {
     modelId: value.modelId,
     prompt,
@@ -83,10 +118,19 @@ export function parseBenchmarkRunRequest(value: unknown): BenchmarkRunRequest {
       1_048_576,
       true,
     ),
-    executionCount: readNumber(value.executionCount, "実行回数", 1, 20, true),
+    executionCount,
     runMode: value.runMode,
     stream: value.stream,
     think: value.think ?? false,
-    runNumber: readNumber(value.runNumber, "実行番号", 1, 20, true),
+    runNumber,
+    benchmarkMode,
+    problemId,
+    executionOrder: readNumber(
+      value.executionOrder ?? 1,
+      "実行順",
+      1,
+      1_000,
+      true,
+    ),
   };
 }

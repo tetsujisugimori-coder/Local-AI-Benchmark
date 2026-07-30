@@ -3,7 +3,7 @@ import {
   formatElapsedMs,
   formatTokensPerSecond,
 } from "@/lib/metrics";
-import type { BenchmarkResult } from "@/types/benchmark";
+import type { BenchmarkMode, BenchmarkResult } from "@/types/benchmark";
 
 function Metric({
   label,
@@ -22,10 +22,16 @@ function Metric({
 
 export function ResultTable({
   results,
+  benchmarkMode,
   onDownload,
+  onDownloadMemoNexus,
+  onManualScoreChange,
 }: {
   results: BenchmarkResult[];
+  benchmarkMode: BenchmarkMode;
   onDownload: () => void;
+  onDownloadMemoNexus: () => void;
+  onManualScoreChange: (index: number, score: number | null) => void;
 }) {
   if (results.length === 0) {
     return null;
@@ -38,14 +44,33 @@ export function ResultTable({
           <p className="stepLabel">RESULTS</p>
           <h2 id="results-heading">比較結果</h2>
         </div>
-        <button className="primaryButton compactButton" type="button" onClick={onDownload}>
-          結果JSONをダウンロード
-        </button>
+        <div className="downloadActions">
+          <button
+            className="primaryButton compactButton"
+            type="button"
+            onClick={onDownload}
+          >
+            結果JSON（途中結果含む）
+          </button>
+          {benchmarkMode === "phase2" ? (
+            <button
+              className="secondaryDownloadButton"
+              type="button"
+              onClick={onDownloadMemoNexus}
+            >
+              Memo-Nexus用JSON
+            </button>
+          ) : null}
+        </div>
       </div>
       <div className="resultsGrid">
         {results.map((result, index) => (
           <article
-            className={`resultCard ${result.error ? "hasError" : ""}`}
+            className={`resultCard ${
+              result.error || result.executionStatus === "not_run"
+                ? "hasError"
+                : ""
+            }`}
             key={`${result.modelId}-${result.runNumber}-${index}`}
           >
             <div className="resultHeader">
@@ -54,12 +79,29 @@ export function ResultTable({
                 <h3>{result.displayName}</h3>
                 <code>{result.modelId}</code>
               </div>
-              <span className={`resultStatus ${result.error ? "error" : ""}`}>
-                {result.error ? "エラー" : result.doneReason ?? "完了"}
+              <span
+                className={`resultStatus ${
+                  result.error || result.executionStatus === "not_run"
+                    ? "error"
+                    : ""
+                }`}
+              >
+                {result.executionStatus === "not_run"
+                  ? "未実行"
+                  : result.executionStatus === "aborted"
+                    ? "中止"
+                    : result.error
+                      ? "失敗"
+                      : result.doneReason ?? "完了"}
               </span>
             </div>
 
-            {result.error ? (
+            {result.executionStatus === "not_run" ? (
+              <div className="errorMessage" role="status">
+                <strong>NOT_RUN</strong>
+                <p>中止後のため、この実行は開始されませんでした。</p>
+              </div>
+            ) : result.error ? (
               <div className="errorMessage" role="alert">
                 <strong>{result.error.code}</strong>
                 <p>{result.error.message}</p>
@@ -78,6 +120,88 @@ export function ResultTable({
                 ) : null}
               </>
             )}
+
+            {benchmarkMode === "phase2" ? (
+              <section className="scorePanel" aria-label="採点結果">
+                <div className="scoreSummary">
+                  <strong>採点</strong>
+                  <span>{result.scoringStatus ?? "unscored"}</span>
+                </div>
+                <dl>
+                  <Metric
+                    label="自動採点"
+                    value={
+                      result.automaticScore === null ||
+                      result.automaticScore === undefined
+                        ? "未採点"
+                        : `${result.automaticScore}点`
+                    }
+                  />
+                  <Metric
+                    label="実行順"
+                    value={result.executionOrder ?? "—"}
+                  />
+                  <Metric
+                    label="状態"
+                    value={result.executionStatus ?? "completed"}
+                  />
+                </dl>
+                {(result.criterionScores ?? []).length > 0 ? (
+                  <ul className="criterionScores">
+                    {result.criterionScores?.map((criterion) => (
+                      <li key={criterion.criterionId}>
+                        <strong>{criterion.label}</strong>
+                        <span>
+                          {criterion.status === "manual_required"
+                            ? "手動評価"
+                            : criterion.status === "passed"
+                              ? `${criterion.score}/${criterion.maxScore}点`
+                              : criterion.status === "failed"
+                                ? `0/${criterion.maxScore}点`
+                                : "未採点"}
+                        </span>
+                        <small>{criterion.note}</small>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="unscoredNotice">
+                    回答が完了していないため未採点です。
+                  </p>
+                )}
+                {(result.criterionScores ?? []).some(
+                  (criterion) => criterion.status === "manual_required",
+                ) ? (
+                  <label className="manualScoreField">
+                    <span>手動評価の合計点（未入力可）</span>
+                    <input
+                      type="number"
+                      min="0"
+                      max={(result.criterionScores ?? [])
+                        .filter(
+                          (criterion) =>
+                            criterion.status === "manual_required",
+                        )
+                        .reduce(
+                          (total, criterion) =>
+                            total + criterion.maxScore,
+                          0,
+                        )}
+                      step="0.5"
+                      value={result.manualScore ?? ""}
+                      onChange={(event) =>
+                        onManualScoreChange(
+                          index,
+                          event.target.value === ""
+                            ? null
+                            : event.target.valueAsNumber,
+                        )
+                      }
+                    />
+                  </label>
+                ) : null}
+              </section>
+            ) : null}
 
             <dl className="metricsGrid">
               <Metric
