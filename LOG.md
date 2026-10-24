@@ -319,8 +319,11 @@
 - `git diff --check`、`git diff --cached --check`: 成功。
 - `git ls-tree -r --name-only HEAD .github`: 現在の基準HEADにGitHub Actions設定ファイルは見つからなかった。Draft PR作成後もPR checksを確認し、未設定ならその旨を記録する。
 - 検証時の作業ツリーでは意図した`README.md`、`LOG.md`、`research/`だけが変更対象。既存アプリのソース、依存関係、Ollama処理、採点ロジックに変更なし。
+- `git diff --check origin/main...HEAD`: push後のPR差分で成功。PR差分は上記8文書のみで、`.local-data/cli-agents/`内のファイルは含まれない。
+- `gh pr view 6 --json ...`: PR #6はDraft / OPENで、head SHAは`afd269044cdd9b74def4516791cdbb57d0e2bea6`。PRのファイル一覧は意図した8文書のみ。
+- `gh pr checks 6`: `no checks reported`（終了コード1）。`statusCheckRollup`も空で、実行されたCI checkはない。CI成功とは扱わない。
 
 ### 未確認事項
 
 - この段階ではエージェントの隔離実行、盲検実験、修正後テスト、独立採点は実施しない。
-- GitHubへpushする前の履歴・PR・CI artifactは未作成のため未確認。公開前に確認する。
+- CI workflowが設定されていないため、GitHub上のビルド・テスト・artifact検査は未実行。ローカルの`npm run check`と`npm run build`を確認済み。
