@@ -283,3 +283,44 @@
 - Waypoint v0.4.0のブラウザUIを実際に起動したE2E取り込みテストは実施していない。
 - `metadata`はWaypoint v0.4.0のメモ本文へ展開されないため、正確な構造化データは元のエクスポートJSONを保管して参照する必要がある。
 - Waypoint側の取り込み仕様が将来変更された場合は、対応バージョンを再確認する必要がある。
+
+## 2026-10-25 — CLI Coding Agent比較研究基盤 第0段階
+
+### 事前調査
+
+- 作業開始時の`main`と`origin/main`は`fb26c73b23238e58cfa0a5caef03a02142f89c77`で一致し、作業ツリーはクリーンだった。
+- remoteは`origin`（`tetsujisugimori-coder/Local-AI-Benchmark`）。
+- 既存Issue #1、#2はOpen、PR #3、#4はMerged。研究基盤の追跡Issueとして[#5](https://github.com/tetsujisugimori-coder/Local-AI-Benchmark/issues/5)を作成した。
+- README、LOG、CONTRIBUTING、`.gitignore`、`package.json`、`tests/`を確認した。テストはNode.js test runnerを使用し、既存の`npm run check`はtypecheck・lint・testを実行する。
+
+### 実装内容
+
+- 既存Ollamaベンチマークとは独立した`research/cli-agents/`研究領域を追加した。
+- 共通実験規約、8項目の評価基準、実験記録テンプレート、ローカル隔離と公開前確認手順を文書化した。
+- Calculator Memo Issue #79 / Draft PR #80は、指定SHA、PARTIAL結果、情報汚染と盲検性の制約、および元リポジトリへのリンクだけを公開記録に登録した。パッチ・正解情報は複製していない。
+- READMEに研究領域への案内を追加した。既存の`.gitignore`にある`/.local-data/`規則が対象パスも除外するため、重複する専用規則は追加していない。
+- エージェント競争、修正、採点は実施していない。
+
+### 変更対象と影響範囲
+
+- `README.md`、`LOG.md`
+- `research/cli-agents/README.md`
+- `research/cli-agents/protocols/`の評価規約、実験記録テンプレート、ローカル隔離手順
+- `research/cli-agents/cases/`と`research/cli-agents/reports/`のCalculator Memo概要記録
+- 既存アプリ、Ollama接続、採点ロジック、依存関係への変更なし。
+
+### 検証
+
+- `npm run check`: 成功。TypeScript検査、ESLint、25テストすべて成功。
+- `npm run build`: 成功。Next.js production build、TypeScript処理、静的ページ生成が完了。
+- PythonのMarkdownリンク検査（README、LOG、研究資料8文書）: ローカルリンク16件を確認し、全参照先が存在。
+- `git check-ignore -v .local-data/cli-agents/answer-key/example.patch`: 既存の`/.local-data/`規則で除外されることを確認。重複する専用規則は追加していない。
+- `.local-data/cli-agents/`配下を`git ls-files`で確認: 追跡ファイルなし。隔離用ディレクトリのみ作成し、秘密資料は置いていない。
+- `git diff --check`、`git diff --cached --check`: 成功。
+- `git ls-tree -r --name-only HEAD .github`: 現在の基準HEADにGitHub Actions設定ファイルは見つからなかった。Draft PR作成後もPR checksを確認し、未設定ならその旨を記録する。
+- 検証時の作業ツリーでは意図した`README.md`、`LOG.md`、`research/`だけが変更対象。既存アプリのソース、依存関係、Ollama処理、採点ロジックに変更なし。
+
+### 未確認事項
+
+- この段階ではエージェントの隔離実行、盲検実験、修正後テスト、独立採点は実施しない。
+- GitHubへpushする前の履歴・PR・CI artifactは未作成のため未確認。公開前に確認する。

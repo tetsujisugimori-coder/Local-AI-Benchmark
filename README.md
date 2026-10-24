@@ -134,6 +134,10 @@ Phase 2結果では、問題セットID・版、問題ID・タイトル、評価
 
 個人情報を含まない形式例は[`examples/sample-result.json`](examples/sample-result.json)にあります。
 
+## CLI Coding Agent比較研究
+
+Copilot CLIとCodex CLIのソフトウェア修正能力を比較する独立した研究資料は[`research/cli-agents/README.md`](research/cli-agents/README.md)を参照してください。既存のOllamaベンチマーク、アプリ実行処理、採点ロジックとは分離しています。正解パッチや隠しテストなどの非公開資料は`.local-data/cli-agents/`へ隔離し、エージェントの読み取り可能範囲をGit除外とは別に制限してください。
+
 ## 取得する指標
 
 Ollama Generate APIの以下の値を保存します。時間値はOllama仕様どおりナノ秒としてJSONへ保持し、画面では秒・ミリ秒へ変換します。
