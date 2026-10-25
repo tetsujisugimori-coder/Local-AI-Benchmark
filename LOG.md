@@ -511,4 +511,5 @@
 - 新しい回帰テストは最初、未観測説明の処理を配列全体として比較してしまう実装上の問題を検出した。各criterion IDごとに観測値を比較するよう修正し、`node --test --test-name-pattern="criterion description" tests/public-benchmark-viewer.test.ts`で1/1成功。
 - 最終再検証後は`npm run check`が60/60成功、`npm run build`、`npm run viewer:build`、`npm run viewer:validate`、`git diff --check`がすべて成功。
 - Draft PR作成後の最初のGitHub Actions run `40230185799`では`check`、root build、viewer buildは成功したが、Linux上の`viewer:validate`でmanifest SHA照合が失敗。原因はWindowsの`core.autocrlf`で合成JSONのCRLFがGit blobではLFになり、manifestが作業ツリー側のCRLFをhashしていたこと。
-- `.gitattributes`で`viewer/public`内のJSONをLF固定し、catalog/合成JSON/manifestをLFへ正規化、manifestを実際のLF JSON bytesから再生成した。`npm run viewer:validate`はローカルで再成功。修正commitのpush後にCIを再実行し、Linux結果を確認する。
+- `.gitattributes`で`viewer/public`内のJSONをLF固定し、catalog/合成JSON/manifestをLFへ正規化、manifestを実際のLF JSON bytesから再生成した。Git index上のsample bytesとmanifest SHA-256の一致、および`npm run viewer:validate`の成功を確認した。
+- 修正HEAD`300dabf38bfbd9c38cbef1b716c8326020a0fac0`に対するGitHub Actions run `40230371597`は全step成功（npm ci、check、root build、viewer build、viewer validate）。先行run `40230185799`の失敗を修正した。RunnerからNode.js 20 action deprecationと`ubuntu-latest`移行の警告があったが、jobは成功。
