@@ -542,7 +542,8 @@
 - `git diff --check`: 成功。
 - Edge 156 headlessで静的viewerをローカル配信して確認。375px・390px・1280pxで表示し、375px/390pxはdocument幅とviewport幅が一致。合成JSON/manifestの一時読込とSHA検証、2実験の比較選択、Spaceキーでの選択、モデル検索フィルターを確認。合成値は例示専用として表示。観測要求34件はすべてlocalhostで、外部origin要求は0件。デスクトップはscrollWidth 1265px / viewport 1280pxで横方向のoverflowなし。
 - 変更後の独立レビューでは実行インターフェース（API/CLI/IDE等）の比較漏れ1件が追加で見つかった。`agent.interface`を比較対象に含め、差があれば直接比較不可とするテスト・仕様記述を追加した。再実行した`npm run check`は75/75成功、root build、viewer build、viewer validate、`git diff --check`も成功。
-- GitHub Actions run `40236624094`はLinux Next.js exportにのみ現れる`_not-found/__next._not-found.__PAGE__.txt`を未許可として検出。次のrun `40236829007`では、別の`_not-found/__next._not-found/__PAGE__.txt`がWindowsには存在するもののLinuxには存在しないため失敗した。両方を必須ファイルから外し、存在するときだけ受け入れる2件の正確なplatform-specific allowlistへ移した。未知の隣接ファイルを拒否する回帰テストを更新。修正後のGitHub Actions確認が必要。
+- GitHub Actions run `40236624094`はLinux Next.js exportにのみ現れる`_not-found/__next._not-found.__PAGE__.txt`を未許可として検出。次のrun `40236829007`では、別の`_not-found/__next._not-found/__PAGE__.txt`がWindowsには存在するもののLinuxには存在しないため失敗した。両方を必須ファイルから外し、存在するときだけ受け入れる2件の正確なplatform-specific allowlistへ移した。未知の隣接ファイルを拒否する回帰テストを更新。
+- 最終HEAD `4521bbbb7a06cc9e8db6a90ed5c44dab34528834`のGitHub Actions run `40236960190`は成功。Linux上で`npm ci`、`npm run check`、`npm run build`、`npm run viewer:build`、`npm run viewer:validate`をすべて完了した。Node.js 20 actionと`ubuntu-latest`更新の警告は残るがjob失敗ではない。
 - WebKitは未検証。GitHub Actionsの最終HEAD CIはpush後に確認する。ローカルブラウザ試験は実験データを公開・登録していない。
 
 ### 残存事項
