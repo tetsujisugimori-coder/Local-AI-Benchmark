@@ -72,10 +72,18 @@ test("viewer validates public sample and exact manifest bytes", async () => {
 
   test("public viewer allows only known platform-specific Next route artifacts", async (t) => {
     const fixture = await createViewerValidationFixture(t);
-    const routeArtifact = OPTIONAL_FRAMEWORK_OUTPUT_FILES[0];
-    const artifactPath = path.join(fixture.outputDir, ...routeArtifact.split("/"));
-    await mkdir(path.dirname(artifactPath), { recursive: true });
-    await writeFile(artifactPath, "generated route artifact");
+    for (const routeArtifact of OPTIONAL_FRAMEWORK_OUTPUT_FILES) {
+      const artifactPath = path.join(
+        fixture.outputDir,
+        ...routeArtifact.split("/"),
+      );
+      await mkdir(path.dirname(artifactPath), { recursive: true });
+      await writeFile(artifactPath, "generated route artifact");
+    }
+    const artifactPath = path.join(
+      fixture.outputDir,
+      ...OPTIONAL_FRAMEWORK_OUTPUT_FILES[0].split("/"),
+    );
     await validatePublicViewerFiles(fixture.paths);
 
     await writeFile(path.join(path.dirname(artifactPath), "private.txt"), "unexpected");

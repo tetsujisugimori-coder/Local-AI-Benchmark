@@ -22,11 +22,11 @@ export const FRAMEWORK_OUTPUT_FILES = [
   "_not-found/__next._index.txt",
   "_not-found/__next._not-found.txt",
   "_not-found/__next._tree.txt",
-  "_not-found/__next._not-found/__PAGE__.txt",
 ];
 
 export const OPTIONAL_FRAMEWORK_OUTPUT_FILES = [
   "_not-found/__next._not-found.__PAGE__.txt",
+  "_not-found/__next._not-found/__PAGE__.txt",
 ];
 
 export async function validatePublicViewerFiles({
