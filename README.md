@@ -146,6 +146,18 @@ Copilot CLIとCodex CLIのソフトウェア修正能力を比較する独立し
 
 生成ファイルと別SHA-256 manifestはローカルダウンロードのみで、外部送信・Web公開・自動pushは行いません。ハッシュが証明するのはファイル同一性だけで、測定や採点の正しさではありません。既存形式との対応、未取得値、セキュリティ境界、将来のスキーマ版管理は[公開用データ仕様](docs/public-benchmark-format.md)を参照してください。[合成サンプル](examples/sample-public-benchmark.json)は実験結果ではありません。
 
+## 公開ベンチマークビューア
+
+独立した`viewer/`アプリは、レビュー済みcatalogデータまたは利用者が選んだJSONとmanifestをブラウザ内で検証し、一覧・検索・条件付き比較を表示します。Ollama/実行APIへの接続、ファイルのアップロード、自動保存、自動公開はありません。合成サンプルのみcatalogに含め、実測記録の新規公開は行いません。
+
+```bash
+npm run viewer:dev
+npm run viewer:build
+npm run viewer:validate
+```
+
+静的出力は`viewer/out/`です。GitHub Pagesなどのサブパスでビルドする場合は`VIEWER_BASE_PATH=/repository`を設定します。公開用catalogへ登録する際は、完全な人手レビュー後にJSON/manifestを再検証する手順を[`docs/public-benchmark-viewer.md`](docs/public-benchmark-viewer.md)で確認してください。登録CLIはファイルを更新しますがcommit/pushは行いません。Pull Request CIは既存アプリと静的viewerをテスト・ビルド・検査しますが、デプロイはしません。
+
 ## 取得する指標
 
 Ollama Generate APIの以下の値を保存します。時間値はOllama仕様どおりナノ秒としてJSONへ保持し、画面では秒・ミリ秒へ変換します。

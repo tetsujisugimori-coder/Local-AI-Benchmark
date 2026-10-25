@@ -116,4 +116,4 @@ Detection is not a security boundary and can have both false negatives and false
 
 ## Future publication
 
-A future read-only website can consume `benchmark-public/v1` directly without depending on the local app's `BenchmarkDocument` schema or Ollama code. This stage implements no website, upload API, database, scheduled run, or automatic publication. Any schema-breaking change requires a new format version and migration/reader plan; v1 output remains a stable historical artifact.
+A separate static viewer consumes `benchmark-public/v1` directly and reuses the shared public format validator and manifest verifier without importing the local dashboard or its APIs. Selected files are checked in browser memory only; no upload or persistence occurs. Review and registration procedures, versioned catalog, static build, and limitations are documented in [Public benchmark viewer](public-benchmark-viewer.md). The viewer does not imply that hash-matched records are authentic or independently validated. Any schema-breaking change requires a new format version and migration/reader plan; v1 output remains a stable historical artifact.

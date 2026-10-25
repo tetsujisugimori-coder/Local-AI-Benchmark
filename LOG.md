@@ -458,3 +458,55 @@
 - 修正commit `4fe302a2119268b3c8b76fca36e804a57fa495c4`をremoteの`81e9137`上へrebaseし、force pushなしでpushした。既存PR #8本文へ第2回指摘の修正と検証結果を追記した。
 - `gh pr view 8`ではbase `main`、state `OPEN`、`isDraft: true`、head `4fe302a2119268b3c8b76fca36e804a57fa495c4`を確認。`gh workflow list`は空で、`gh pr checks 8`は`no checks reported`（終了コード1）。CI成功とは扱わない。LOGの最終記録を追加後に再pushし、PR状態を再確認する。
 - WebKit、GitHub Actions checksは未確認/利用不可。マージ、auto-merge、本番公開はしていない。
+
+## 2026-10-25 — 公開ベンチマーク検証・登録・比較ビューア（第2段階）
+
+### 作業前確認と構成
+
+- 作業開始時の`main` / `origin/main`はPR #8のマージコミット`b1c0ca66d35c3fb268ef14c5c46aaf3dcb79c517`で一致し、作業ツリーはclean。Issue [#9](https://github.com/tetsujisugimori-coder/Local-AI-Benchmark/issues/9)を作成し、専用ブランチ`feature/public-benchmark-viewer`を作成した。
+- `viewer/`配下にNext.jsの独立した静的アプリを設けた。既存のNext.jsアプリ全体は静的exportへ変更せず、公開形式・manifest・参照URL検証の共有コードだけを再利用する。選定理由と分離境界を`docs/public-benchmark-viewer.md`に記録した。
+- 登録済みデータはレビュー済みの合成サンプル1件のみ。実測データは追加していない。PR向けGitHub Actionsは`contents: read`のみで、デプロイ権限・秘密情報を持たない。
+
+### 実装内容
+
+- ブラウザ内の一時JSON/manifest選択とバイト単位のUTF-8・schema・SHA-256検証、公開カタログの再検証、モデル/エージェント等の検索・絞り込み、最大4実験の条件付き比較、実測値のみの棒グラフ、各実験の公開詳細・信頼性制約表示を実装した。一時読込はメモリ内だけで、アップロード・localStorage永続化・Ollama/API呼出しは行わない。
+- 承認済みデータを人間が再検証してcatalogへ登録する補助CLIと、catalog・manifest・実験ID・静的成果物を検査する検証CLIを追加した。自動収集・commit・push・公開デプロイは実装していない。
+- 実ブラウザ確認で375px/390pxに長い実験ID・評価項目がある場合、詳細・比較スコアがわずかに横へ溢れることを発見。詳細summaryとチャートの全列に折返し/最小幅制約を追加し、再確認でページ横幅とviewport幅が一致することを確認した。比較表の横幅超過は表専用の横スクロール領域内に留まる。
+- `synthetic_sample`を一覧・詳細に明示し、合成データを実測性能の証拠として扱わない。異なる課題/規約を合算せず、conditions.id一致を比較要件にせず、未観測条件は不明・参考比較として表示する。
+
+### 変更ファイル
+
+- `.github/workflows/public-benchmark-viewer.yml`
+- `viewer/`（独立静的アプリ、カタログ、合成データ、一覧・検索・比較UI、検証ロジック、CSS）
+- `scripts/register-public-benchmark.mjs`、`scripts/validate-public-viewer.mjs`
+- `tests/public-benchmark-viewer.test.ts`
+- `src/lib/public-benchmark.ts`（既存の安全な公開URL判定を共有するexportのみ）
+- `.gitignore`、`eslint.config.mjs`、`tsconfig.json`、`package.json`
+- `README.md`、`docs/public-benchmark-format.md`、`docs/public-benchmark-viewer.md`、`LOG.md`
+
+既存Ollama実行・採点・schemaVersion 1保存・Memo-Nexus出力のロジックは変更していない。依存パッケージを追加していない。
+
+### 検証結果
+
+- `npm run check`: 成功。既存アプリ/viewerのTypeScript、ESLint、Nodeテスト60件（成功60、失敗0）。
+- `npm run build`: 成功。既存Next.jsアプリのproduction build。
+- `npm run viewer:build`: 成功。静的ビューアをexport。
+- `npm run viewer:validate`: 成功。catalog 1件・実験1件、静的成果物31ファイルを検査。
+- `VIEWER_BASE_PATH=/Local-AI-Benchmark`を指定したサブパスbuildで、HTML内のasset URLがサブパス配下になることを確認。最終成果物は既定base pathで再buildした。
+- Edge 156 headlessでproduction静的ファイルをlocalhost配信し、375px・390px・デスクトップ1280pxを確認。合成JSON/manifestの一時読込、SHA-256検証成功、モデル検索（3件中1件表示）、Spaceキーでの比較選択、複数実験比較、HTML風文字列がテキストとして表示され画像要素が実行されないこと、長い自由記述の折返しを確認した。ページの横幅は375px/390pxで一致し、横スクロールは比較表コンテナ内のみ。localStorageは0、観測したネットワーク要求11件は全てlocalhostで、API/Ollama/外部originへの要求なし。
+- `git diff --check`: 成功。空白エラーなし（WindowsのLF/CRLF変換注意のみ）。
+- WebKitは未検証。PR作成前につきGitHub Actionsの実行結果はまだない。PR後にchecksを確認し、未報告は成功扱いしない。
+
+### セキュリティ境界と未確認事項
+
+- SHA-256は選択されたJSONとmanifestの同一性だけを検証する。両ファイルを同じ人が変更可能な状況で真正性、実験の正確性、採点の独立性は保証しない。公開前の人間レビューが必要。
+- 静的viewerに実測データ、秘密資料、ローカルAPI、環境変数は同梱しない。JSON文字列をHTMLとして実行せず、外部リンクは共有URL判定に従う。
+- Edgeで行ったブラウザ検証はheadlessでのローカルproduction成果物確認。実利用者の支援技術、WebKit、GitHub CIの成功は確認していない。
+- CIはworkflow定義を追加済みだがGitHub上の実行結果未確認。公開ホスティング、デプロイ、自動データ登録、実測結果の公開は実施していない。
+
+### 独立レビュー修正
+
+- 独立レビューで、評価項目の説明文が比較判定から抜けており、採点定義が異なる結果でも直接比較可能になる中程度の問題を確認した。
+- 評価項目ID・説明を個別に比較するよう修正。公開説明が異なる場合は直接比較不可、どちらかが非公開/未観測なら参考比較として不明点を表示する回帰テストを追加した。比較仕様書も更新した。
+- 新しい回帰テストは最初、未観測説明の処理を配列全体として比較してしまう実装上の問題を検出した。各criterion IDごとに観測値を比較するよう修正し、`node --test --test-name-pattern="criterion description" tests/public-benchmark-viewer.test.ts`で1/1成功。
+- 最終再検証後は`npm run check`が60/60成功、`npm run build`、`npm run viewer:build`、`npm run viewer:validate`、`git diff --check`がすべて成功。

@@ -1,0 +1,297 @@
+:root {
+  color-scheme: light;
+  --ink: #152033;
+  --muted: #59677d;
+  --line: #d8dfeb;
+  --paper: #f5f7fb;
+  --panel: #ffffff;
+  --accent: #1959a6;
+  --warning: #77520a;
+  --danger: #8f2020;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: system-ui, "Segoe UI", sans-serif;
+  line-height: 1.55;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button,
+select,
+input {
+  min-height: 2.7rem;
+}
+
+button,
+.buttonLink {
+  border: 1px solid var(--accent);
+  border-radius: 0.45rem;
+  padding: 0.5rem 0.8rem;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+a {
+  color: var(--accent);
+  overflow-wrap: anywhere;
+}
+
+:focus-visible {
+  outline: 3px solid #eea928;
+  outline-offset: 2px;
+}
+
+.page {
+  width: min(1280px, 100%);
+  margin-inline: auto;
+  padding: 1rem clamp(0.75rem, 3vw, 2rem) 3rem;
+}
+
+.masthead {
+  padding: 1.5rem 0 1rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.masthead h1 {
+  margin: 0;
+  font-size: clamp(1.55rem, 4vw, 2.4rem);
+  line-height: 1.2;
+}
+
+.masthead p {
+  max-width: 72ch;
+  color: var(--muted);
+}
+
+.notice,
+.panel,
+.recordCard {
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  background: var(--panel);
+}
+
+.notice {
+  margin-block: 1rem;
+  padding: 1rem;
+  border-left: 5px solid var(--warning);
+}
+
+.notice p,
+.panel p {
+  margin-block: 0.35rem;
+}
+
+.panel {
+  margin-block: 1rem;
+  padding: clamp(0.85rem, 2vw, 1.25rem);
+}
+
+.toolbar,
+.filters,
+.uploadFields,
+.selectionRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: end;
+}
+
+.filters label,
+.uploadFields label {
+  display: grid;
+  flex: 1 1 12rem;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+input,
+select {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #8d9bb0;
+  border-radius: 0.4rem;
+  padding: 0.45rem;
+  background: #fff;
+  color: var(--ink);
+}
+
+.tableWrap {
+  overflow-x: auto;
+  margin-block: 0.75rem;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding: 0.65rem;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+th {
+  background: #eef2f8;
+}
+
+.badge {
+  display: inline-block;
+  margin: 0.1rem 0.25rem 0.1rem 0;
+  border: 1px solid #9ba8ba;
+  border-radius: 999px;
+  padding: 0.1rem 0.55rem;
+  font-size: 0.85rem;
+}
+
+.badge.synthetic {
+  border-color: #8d5d00;
+  background: #fff3d2;
+}
+
+.badge.userRecorded {
+  border-color: #7a547e;
+  background: #f7eef8;
+}
+
+.recordGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+  gap: 0.75rem;
+}
+
+.recordCard {
+  min-width: 0;
+  padding: 0.85rem;
+}
+
+.recordCard > summary {
+  overflow-wrap: anywhere;
+}
+
+.recordCard h3 {
+  margin: 0.35rem 0;
+  overflow-wrap: anywhere;
+}
+
+.recordCard dl {
+  display: grid;
+  grid-template-columns: minmax(7rem, 0.8fr) minmax(0, 1.5fr);
+  gap: 0.25rem 0.5rem;
+  margin: 0.5rem 0;
+}
+
+.recordCard dt {
+  color: var(--muted);
+}
+
+.recordCard dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.chart {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.chartRow {
+  display: grid;
+  grid-template-columns: minmax(7.5rem, 0.7fr) minmax(3rem, 2fr) minmax(5rem, 0.6fr);
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.chartRow > * {
+  min-width: 0;
+}
+
+.chartRow > span,
+.chartRow > strong {
+  overflow-wrap: anywhere;
+}
+
+.barTrack {
+  height: 1rem;
+  border-radius: 0.25rem;
+  background: #e8edf5;
+}
+
+.bar {
+  height: 100%;
+  min-width: 2px;
+  border-radius: inherit;
+  background: #3977bd;
+}
+
+.scoreRows {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.scoreGroup {
+  border-top: 1px solid var(--line);
+  padding-top: 0.5rem;
+}
+
+.scoreItem {
+  display: grid;
+  grid-template-columns: minmax(8rem, 1fr) auto;
+  gap: 0.5rem;
+}
+
+.testList,
+.plainList {
+  padding-left: 1.25rem;
+}
+
+.error {
+  color: var(--danger);
+  font-weight: 650;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.small {
+  font-size: 0.9rem;
+}
+
+@media (max-width: 520px) {
+  .chartRow {
+    grid-template-columns: minmax(6rem, 0.8fr) minmax(2.5rem, 1.4fr) minmax(4rem, 0.6fr);
+    gap: 0.35rem;
+  }
+
+  .recordCard dl {
+    grid-template-columns: 7rem minmax(0, 1fr);
+  }
+
+  th,
+  td {
+    padding: 0.45rem;
+  }
+}

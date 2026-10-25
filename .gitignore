@@ -16,6 +16,9 @@
 # next.js
 /.next/
 /out/
+/viewer/.next/
+/viewer/out/
+/viewer/next-env.d.ts
 
 # production
 /build

@@ -1,0 +1,14 @@
+{
+  "catalogVersion": 1,
+  "entries": [
+    {
+      "id": "synthetic-demo",
+      "dataFile": "data/synthetic-demo.json",
+      "manifestFile": "data/synthetic-demo.manifest.json",
+      "dataKind": "synthetic_sample",
+      "reviewedAt": "2026-10-25T19:55:38.252Z",
+      "reviewedBy": "Project maintainer",
+      "reviewNote": "Synthetic format sample only; no experiment was run."
+    }
+  ]
+}
