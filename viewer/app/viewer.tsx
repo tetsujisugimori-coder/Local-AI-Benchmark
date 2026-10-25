@@ -7,6 +7,7 @@ import type {
 } from "../../src/types/public-benchmark.ts";
 import {
   assessComparability,
+  buildMetricGroups,
   MAX_BENCHMARK_BYTES,
   MAX_MANIFEST_BYTES,
   observationText,
@@ -44,10 +45,6 @@ const EMPTY_FILTERS: Filters = {
 
 function matchesFilter(value: string, filter: string): boolean {
   return value.toLocaleLowerCase().includes(filter.trim().toLocaleLowerCase());
-}
-
-function observed<T>(value: { status: string; value?: T }): T | null {
-  return value.status === "observed" ? (value.value ?? null) : null;
 }
 
 function display<T>(
@@ -602,73 +599,106 @@ function IssueList({ title, items }: { title: string; items: string[] }) {
 }
 
 function MetricCharts({ records }: { records: BenchmarkSource[] }) {
-  const durations = records
-    .map((record) => ({
-      record,
-      value: observed(record.experiment.execution.durationMs),
-    }))
-    .filter(
-      (item): item is { record: BenchmarkSource; value: number } =>
-        item.value !== null,
-    );
-  const maxDuration = Math.max(1, ...durations.map((item) => item.value));
-  const maxScore = Math.max(
-    1,
-    ...records.flatMap((record) =>
-      record.experiment.evaluation.criteria
-        .map((criterion) =>
-          typeof criterion.score === "number" ? criterion.score : null,
-        )
-        .filter((score): score is number => score !== null),
-    ),
-  );
+  const groups = buildMetricGroups(records);
   return (
     <>
-      <h3>実行時間</h3>
-      <p className="small muted">実測ミリ秒を同一の線形スケールで表示。未観測・非該当値は棒にせず、0として扱いません。</p>
-      {durations.length ? (
-        <div className="chart" aria-label="選択した実験の実測実行時間比較">
-          {durations.map(({ record, value }) => (
-            <div className="chartRow" key={record.key}>
-              <span>{record.experiment.id}</span>
-              <div className="barTrack" aria-hidden="true">
-                <div className="bar" style={{ width: `${(value / maxDuration) * 100}%` }} />
-              </div>
-              <strong>{value.toLocaleString()} ms</strong>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <p className="muted">比較対象に実測実行時間はありません。</p>
-      )}
-      <h3>評価項目別得点</h3>
-      <p className="small muted">
-        得点の数値をそのまま共通ポイント軸に表示します。最大点が異なる場合は各値に併記し、未観測・非該当を棒で示しません。
-      </p>
-      <div className="scoreRows">
-        {records.flatMap((record) =>
-          record.experiment.evaluation.criteria.map((criterion) => {
-            const score = criterion.score;
-            const numericScore = typeof score === "number" ? score : null;
-            return (
-              <div className="scoreGroup" key={`${record.key}:${criterion.id}`}>
-                <strong>{criterion.label} ({criterion.id})</strong>
-                <div className="chartRow">
-                  <span>{record.experiment.id}</span>
-                  {numericScore !== null ? (
+      {groups.map((group) => {
+        const durations = group.points.filter(
+          (point): point is typeof point & { durationMs: number } =>
+            point.durationMs !== null,
+        );
+        const maxDuration = Math.max(
+          1,
+          ...durations.map((point) => point.durationMs),
+        );
+        const numericScores = group.points.flatMap((point) =>
+          point.criteria.flatMap((criterion) =>
+            criterion.score === null ? [] : [criterion.score],
+          ),
+        );
+        const maxScore = Math.max(1, ...numericScores);
+        return (
+          <section
+            className={`metricGroup ${group.dataKind === "synthetic_sample" ? "syntheticMetrics" : "recordedMetrics"}`}
+            data-data-kind={group.dataKind}
+            key={group.dataKind}
+          >
+            <h3>{group.label}</h3>
+            <h4>実行時間</h4>
+            <p className="small muted">
+              {group.dataKind === "synthetic_sample"
+                ? "例示用の合成値です。実験や実測の証拠ではありません。"
+                : "利用者記録の値です。実測の独立検証は行っていません。"}
+              {" "}未観測・非該当値は棒にせず、0として扱いません。
+            </p>
+            {durations.length ? (
+              <div
+                className="chart"
+                aria-label={`${group.label}の実行時間比較`}
+              >
+                {durations.map((point) => (
+                  <div className="chartRow" key={point.record.key}>
+                    <span>{point.record.experiment.id}</span>
                     <div className="barTrack" aria-hidden="true">
-                      <div className="bar" style={{ width: `${(numericScore / maxScore) * 100}%` }} />
+                      <div
+                        className="bar"
+                        style={{
+                          width: `${(point.durationMs / maxDuration) * 100}%`,
+                        }}
+                      />
                     </div>
-                  ) : (
-                    <span>{criterion.score === "not_applicable" ? "非該当" : "未観測"}</span>
-                  )}
-                  <strong>{numericScore !== null ? `${numericScore} / ${criterion.maxScore}点` : score}</strong>
-                </div>
+                    <strong>{point.durationMs.toLocaleString()} ms</strong>
+                  </div>
+                ))}
               </div>
-            );
-          }),
-        )}
-      </div>
+            ) : (
+              <p className="muted">表示できる実行時間はありません（未観測を0としていません）。</p>
+            )}
+            <h4>評価項目別得点</h4>
+            <p className="small muted">
+              得点をそのまま表示します。未観測・非該当値は棒にしません。
+            </p>
+            <div className="scoreRows">
+              {group.points.flatMap((point) =>
+                point.criteria.map((criterion) => (
+                  <div
+                    className="scoreGroup"
+                    key={`${point.record.key}:${criterion.id}`}
+                  >
+                    <strong>{criterion.label} ({criterion.id})</strong>
+                    <div className="chartRow">
+                      <span>{point.record.experiment.id}</span>
+                      {criterion.score !== null ? (
+                        <div className="barTrack" aria-hidden="true">
+                          <div
+                            className="bar"
+                            style={{
+                              width: `${(criterion.score / maxScore) * 100}%`,
+                            }}
+                          />
+                        </div>
+                      ) : (
+                        <span>
+                          {criterion.scoreStatus === "not_applicable"
+                            ? "非該当"
+                            : "未観測"}
+                        </span>
+                      )}
+                      <strong>
+                        {criterion.score !== null
+                          ? `${criterion.score} / ${criterion.maxScore}点`
+                          : criterion.scoreStatus === "not_applicable"
+                            ? "非該当"
+                            : "未観測"}
+                      </strong>
+                    </div>
+                  </div>
+                )),
+              )}
+            </div>
+          </section>
+        );
+      })}
     </>
   );
 }
@@ -685,6 +715,12 @@ function ComparisonTable({ records }: { records: BenchmarkSource[] }) {
           </tr>
         </thead>
         <tbody>
+          <tr>
+            <th scope="row">データ種別</th>
+            {records.map((record) => (
+              <td key={record.key}>{dataKindLabel(record.dataKind)}</td>
+            ))}
+          </tr>
           {[
             ["モデル", (experiment: PublicBenchmarkExperiment) => display(experiment.model.name)],
             ["モデル提供者", (experiment: PublicBenchmarkExperiment) => display(experiment.model.provider)],

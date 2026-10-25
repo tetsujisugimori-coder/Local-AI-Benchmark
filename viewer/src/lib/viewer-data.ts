@@ -34,6 +34,22 @@ export type BenchmarkSource = {
   warnings: string[];
 };
 
+export type MetricGroup = {
+  dataKind: PublicBenchmarkDocument["dataKind"];
+  label: string;
+  points: Array<{
+    record: BenchmarkSource;
+    durationMs: number | null;
+    criteria: Array<{
+      id: string;
+      label: string;
+      score: number | null;
+      scoreStatus: "observed" | "not_observed" | "not_applicable";
+      maxScore: number;
+    }>;
+  }>;
+};
+
 export type VerifiedPair = {
   document: PublicBenchmarkDocument;
   manifest: PublicIntegrityManifest;
@@ -174,8 +190,60 @@ export function observationText<T>(
   }
 }
 
+export function buildMetricGroups(records: BenchmarkSource[]): MetricGroup[] {
+  const groups = new Map<PublicBenchmarkDocument["dataKind"], BenchmarkSource[]>();
+  for (const record of records) {
+    const group = groups.get(record.dataKind) ?? [];
+    group.push(record);
+    groups.set(record.dataKind, group);
+  }
+  const labels: Record<PublicBenchmarkDocument["dataKind"], string> = {
+    user_recorded: "利用者記録（独立した実測検証なし）",
+    synthetic_sample: "合成例示（実験・実測ではありません）",
+  };
+  return (["user_recorded", "synthetic_sample"] as const).flatMap((dataKind) => {
+    const group = groups.get(dataKind);
+    if (!group) return [];
+    return [
+      {
+        dataKind,
+        label: labels[dataKind],
+        points: group.map((record) => ({
+          record,
+          durationMs:
+            record.experiment.execution.durationMs.status === "observed"
+              ? record.experiment.execution.durationMs.value
+              : null,
+          criteria: record.experiment.evaluation.criteria.map((criterion) => ({
+            id: criterion.id,
+            label: criterion.label,
+            score:
+              typeof criterion.score === "number" ? criterion.score : null,
+            scoreStatus:
+              typeof criterion.score === "number"
+                ? "observed"
+                : criterion.score,
+            maxScore: criterion.maxScore,
+          })),
+        })),
+      },
+    ];
+  });
+}
+
 function knownObservation<T>(observation: Observation<T>): T | null {
   return observation.status === "observed" ? observation.value : null;
+}
+
+function compareUnorderedStrings(
+  observation: Observation<string[]>,
+): string[] | null {
+  const values = knownObservation(observation);
+  return values === null ? null : [...values].sort(compareCodeUnits);
+}
+
+function compareCodeUnits(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function compareJson(left: unknown, right: unknown): boolean {
@@ -225,6 +293,34 @@ export function assessComparability(
     "課題バージョン",
     experiments.map((experiment) =>
       knownObservation(experiment.task.setVersion),
+    ),
+  );
+  compareObserved(
+    "課題本文",
+    experiments.map((experiment) =>
+      knownObservation(experiment.task.prompt),
+    ),
+  );
+  compareObserved(
+    "実行インターフェース",
+    experiments.map((experiment) => experiment.agent.interface),
+  );
+  compareObserved(
+    "利用可能ツール",
+    experiments.map((experiment) =>
+      compareUnorderedStrings(experiment.agent.tools),
+    ),
+  );
+  compareObserved(
+    "エージェント権限",
+    experiments.map((experiment) =>
+      knownObservation(experiment.agent.permissions),
+    ),
+  );
+  compareObserved(
+    "人間の介入条件",
+    experiments.map((experiment) =>
+      knownObservation(experiment.agent.humanIntervention),
     ),
   );
   compareObserved(

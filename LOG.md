@@ -504,6 +504,52 @@
 - Edgeで行ったブラウザ検証はheadlessでのローカルproduction成果物確認。実利用者の支援技術、WebKit、GitHub CIの成功は確認していない。
 - CIはworkflow定義を追加済みだがGitHub上の実行結果未確認。公開ホスティング、デプロイ、自動データ登録、実測結果の公開は実施していない。
 
+## 2026-10-26 — Draft PR #11 独立レビュー指摘修正
+
+### 作業前確認と修正前の再現
+
+- 対象は既存ブランチ`feature/public-benchmark-viewer`。開始時に作業ツリーがcleanであること、PR #11のremote HEADにレビュー記録コミット`8ed60e544777d7a7041547364923543bfee85722`が含まれること、PRがOPEN/Draftであることを確認した。レビュー記録と先行修正を保持し、新規PR・main変更は行っていない。
+- 修正前の静的検査CLIでは、`viewer/public`へ未登録CSV、静的出力へ未登録TXTを置いても検査が成功することを再現した。
+- 修正前の比較関数へ課題本文、ツール、権限、介入条件だけが異なる記録を渡しても、それらの差が比較結果へ現れないことを確認した。
+- 修正前のチャート実装は`dataKind`をグラフへ渡さず、合成サンプルも実測値のラベルで表示する構造だった（コード上で確認。修正前UIをブラウザ操作した再現ではない）。
+- 登録競合はレビュー対象HEAD`8ed60e5`を一時展開した隔離ディレクトリで再現した。入力JSONの初回検証後、旧`copyExclusive()`が同じ入力パスを再読込するタイミングでファイルを変更すると、CLIは登録成功を表示したが、保存JSONと元manifestの照合に失敗した。隔離ディレクトリは再現後に削除した。
+
+### 修正内容
+
+- `viewer/public/`と`viewer/out/`を再帰的な許可リストで照合し、未知ファイル・ディレクトリ・symlink・非通常ファイルを拒否する。catalogと登録JSON/manifestの組、静的成果物とのバイト一致を維持。Next.js 16の通常のbuild-ID資産と空の対応ディレクトリは、build出力から確認できたものだけを許可する。
+- 比較判定に`task.prompt`、`agent.tools`、`agent.permissions`、`agent.humanIntervention`を追加。課題本文や実行条件の非公開・未観測は一致扱いせず、toolの並び順だけは正規化する。
+- メトリックを`dataKind`別に分け、`synthetic_sample`を例示専用の別系列として明示。利用者記録と混ぜず、未観測値も棒グラフのゼロにしない。
+- 登録CLIは入力ファイルを一度だけ読み、その検証済みbytesを排他的に保存し、保存後のJSON/manifest・バイト一致を再検証する。catalog更新はロックで直列化し、既存ロック、catalog破損・変更、重複、保存失敗を拒否し、新規ファイルをrollbackする。中断時のstale lock確認・削除方法を運用文書へ追加した。
+- 独立レビューで追加指摘されたエージェント実行インターフェース差（API/CLI/IDE等）を比較条件へ含め、相違時に直接比較不可とする回帰テストと仕様記述を追加した。
+- 実ビルドでvalidatorの誤検出も発見した。Next.jsのbuild-ID資産は`_next/static/<id>/...`に出力される一方、同時に空の`_next/<id>`ディレクトリも作られる。資産の配置を正しく反映し、許可したbuild-IDに対応する空ディレクトリだけを許容する回帰テストを追加した。
+
+### 変更ファイル
+
+- `scripts/public-viewer-validation.mjs`（新規）、`scripts/validate-public-viewer.mjs`
+- `viewer/src/lib/viewer-data.ts`
+- `viewer/app/viewer.tsx`、`viewer/app/styles.css`
+- `scripts/public-benchmark-registration.ts`（新規）、`scripts/register-public-benchmark.mjs`
+- `tests/public-benchmark-viewer.test.ts`
+- `docs/public-benchmark-viewer.md`
+- `LOG.md`
+
+### 検証結果
+
+- `npm run check`: 成功。root/viewer TypeScript、ESLint、全74テストが成功（失敗0、skip 0）。Windows権限によりローカルsymlink作成テストのみ実行できず、診断を出した。Linux CIで同じ拒否ケースを実行するテストを残している。
+- `npm run build`: 既存アプリproduction build成功。Ollama API routeを含む既存route構成でbuildできた。
+- `npm run viewer:build`: 静的viewer build成功。
+- `npm run viewer:validate`: catalog 1件・実験1件と、Next build assetsを含む静的出力31ファイルを検査し成功。
+- `git diff --check`: 成功。
+- Edge 156 headlessで静的viewerをローカル配信して確認。375px・390px・1280pxで表示し、375px/390pxはdocument幅とviewport幅が一致。合成JSON/manifestの一時読込とSHA検証、2実験の比較選択、Spaceキーでの選択、モデル検索フィルターを確認。合成値は例示専用として表示。観測要求34件はすべてlocalhostで、外部origin要求は0件。デスクトップはscrollWidth 1265px / viewport 1280pxで横方向のoverflowなし。
+- 変更後の独立レビューでは実行インターフェース（API/CLI/IDE等）の比較漏れ1件が追加で見つかった。`agent.interface`を比較対象に含め、差があれば直接比較不可とするテスト・仕様記述を追加した。再実行した`npm run check`は74/74成功、root build、viewer build、viewer validate、`git diff --check`も成功。
+- WebKitは未検証。GitHub Actionsの最終HEAD CIはpush後に確認する。ローカルブラウザ試験は実験データを公開・登録していない。
+
+### 残存事項
+
+- URLや内容の安全性を完全に保証するものではない。reviewerによる静的成果物と公開データの確認は引き続き必要。
+- `viewer/out`の許可リストはNext.js生成規則を意図的に固定している。Next.js更新時は生成出力を確認してからallowlistを更新する必要がある。
+- WebKitおよびGitHub CIの最終結果は未確認。Draft PR #11は人間レビュー待ちで維持し、merge・auto-merge・本番公開は行わない。
+
 ### 独立レビュー修正
 
 - 独立レビューで、評価項目の説明文が比較判定から抜けており、採点定義が異なる結果でも直接比較可能になる中程度の問題を確認した。

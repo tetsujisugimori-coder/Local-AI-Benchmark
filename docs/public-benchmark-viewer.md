@@ -30,11 +30,18 @@ unverified and marks synthetic samples separately.
 Comparison classification uses only fields disclosed in each record. It does
 not require `conditions.id` equality: that fingerprint includes model identity
 and is not a model-independent match criterion. Different task IDs/versions,
-rubric IDs/versions, criterion IDs/labels/descriptions/scoring methods/maximum
-scores, or known settings and hardware are reported as condition differences.
-Withheld criterion descriptions and other missing values remain unknown and
-cannot establish equivalence. Scores are not aggregated across different tasks
-or rubrics; unobserved measurements are not plotted as zero.
+prompt text, tool lists, permissions, human-intervention conditions, rubric
+IDs/versions, agent interfaces, criterion IDs/labels/descriptions/scoring
+methods/maximum scores, or known settings and hardware are reported as
+condition differences. Tool lists are compared as unordered sets of disclosed
+names. Withheld criterion descriptions and other missing values remain unknown
+and cannot establish equivalence. Agent/model display names alone do not block
+comparison. Scores are not aggregated across different tasks or rubrics;
+unobserved measurements are not plotted as zero.
+
+Metric charts are separated by `dataKind`. Synthetic values are labeled as
+illustrative, never measured evidence, and are not mixed into user-recorded
+series. User-recorded values are not independently verified measurements.
 
 ## Local development and static build
 
@@ -64,10 +71,24 @@ hosting workflow must be separately reviewed and explicitly enabled.
    note, and both file paths. The tool validates schema, disclosure scan,
    manifest bytes, size, duplicate IDs, and catalog uniqueness before copying
    the files. It accepts only data that has been explicitly reviewed; it does
-   not infer approval from a valid hash.
-4. Inspect the staged catalog and copied data, run `npm run check` and
-   `npm run viewer:build`, and review the complete diff and static output before
-   a human makes any commit or publication decision.
+   not infer approval from a valid hash. A catalog lock prevents concurrent
+   registration from overwriting catalog changes. If a process is interrupted
+   and leaves `viewer/public/catalog/v1.json.lock`, first verify no registration
+   process is active before removing the stale lock manually.
+4. Inspect the staged catalog and copied data, run `npm run check`,
+   `npm run viewer:build`, and `npm run viewer:validate`, and review the
+   complete diff and static output before a human makes any commit or
+   publication decision.
+
+The validator allowlists the versioned catalog and exactly its registered JSON
+and manifest files under `viewer/public/`. It separately checks the static
+export against those same bytes, the build's generated `_next` assets, and the
+known Next.js route artifacts. Next build-ID directories are permitted only
+when they correspond to generated assets; the export's corresponding build-ID
+directory may be empty, but unexpected files still fail validation. Unknown
+extensions, extra files/directories, and symlinks fail validation. When a
+Next.js upgrade changes generated route artifacts, update the explicit
+artifact allowlist only after reviewing the new build output.
 
 No real-world user-recorded benchmark is included in this stage.
 

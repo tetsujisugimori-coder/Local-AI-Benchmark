@@ -217,6 +217,24 @@ th {
   gap: 0.5rem;
 }
 
+.metricGroup {
+  min-width: 0;
+  margin-block: 1rem;
+  padding: 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 0.6rem;
+}
+
+.recordedMetrics {
+  border-left: 5px solid var(--accent);
+  background: #f7faff;
+}
+
+.syntheticMetrics {
+  border-left: 5px solid #8d5d00;
+  background: #fffaf0;
+}
+
 .chartRow {
   display: grid;
   grid-template-columns: minmax(7.5rem, 0.7fr) minmax(3rem, 2fr) minmax(5rem, 0.6fr);
