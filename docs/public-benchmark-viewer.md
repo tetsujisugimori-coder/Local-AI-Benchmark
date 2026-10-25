@@ -83,12 +83,14 @@ hosting workflow must be separately reviewed and explicitly enabled.
 The validator allowlists the versioned catalog and exactly its registered JSON
 and manifest files under `viewer/public/`. It separately checks the static
 export against those same bytes, the build's generated `_next` assets, and the
-known Next.js route artifacts. Next build-ID directories are permitted only
-when they correspond to generated assets; the export's corresponding build-ID
-directory may be empty, but unexpected files still fail validation. Unknown
-extensions, extra files/directories, and symlinks fail validation. When a
-Next.js upgrade changes generated route artifacts, update the explicit
-artifact allowlist only after reviewing the new build output.
+known Next.js route artifacts. A small explicit list allows one platform-
+specific not-found route artifact only when it is present. Next build-ID
+directories are permitted only when they correspond to generated assets; the
+export's corresponding build-ID directory may be empty, but unexpected files
+still fail validation. Unknown extensions, extra files/directories, and
+symlinks fail validation. When a Next.js upgrade changes generated route
+artifacts, update the explicit artifact allowlist only after reviewing the new
+build output.
 
 No real-world user-recorded benchmark is included in this stage.
 

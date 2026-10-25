@@ -25,6 +25,10 @@ export const FRAMEWORK_OUTPUT_FILES = [
   "_not-found/__next._not-found/__PAGE__.txt",
 ];
 
+export const OPTIONAL_FRAMEWORK_OUTPUT_FILES = [
+  "_not-found/__next._not-found.__PAGE__.txt",
+];
+
 export async function validatePublicViewerFiles({
   publicDir,
   outputDir,
@@ -66,12 +70,16 @@ export async function validatePublicViewerFiles({
   await assertTreeMatches(publicDir, expectedPublicFiles, "viewer/public");
 
   const generatedStaticFiles = await listRegularFiles(generatedStaticDir);
+  const currentOutput = await listTree(outputDir, "viewer/out");
   const frameworkBuildDirectories = generatedStaticFiles
     .filter((file) => file.includes("/") && !file.startsWith("chunks/"))
     .map((file) => `_next/${file.split("/")[0]}`);
   const expectedOutputFiles = new Set([
     ...expectedPublicFiles,
     ...FRAMEWORK_OUTPUT_FILES,
+    ...OPTIONAL_FRAMEWORK_OUTPUT_FILES.filter((file) =>
+      currentOutput.files.has(file),
+    ),
     ...generatedStaticFiles.map(outputAssetPath),
   ]);
   await assertTreeMatches(

@@ -535,13 +535,14 @@
 
 ### 検証結果
 
-- `npm run check`: 成功。root/viewer TypeScript、ESLint、全74テストが成功（失敗0、skip 0）。Windows権限によりローカルsymlink作成テストのみ実行できず、診断を出した。Linux CIで同じ拒否ケースを実行するテストを残している。
+- `npm run check`: 成功。root/viewer TypeScript、ESLint、全75テストが成功（失敗0、skip 0）。Windows権限によりローカルsymlink作成テストのみ実行できず、診断を出した。Linux CIで同じ拒否ケースを実行するテストを残している。
 - `npm run build`: 既存アプリproduction build成功。Ollama API routeを含む既存route構成でbuildできた。
 - `npm run viewer:build`: 静的viewer build成功。
 - `npm run viewer:validate`: catalog 1件・実験1件と、Next build assetsを含む静的出力31ファイルを検査し成功。
 - `git diff --check`: 成功。
 - Edge 156 headlessで静的viewerをローカル配信して確認。375px・390px・1280pxで表示し、375px/390pxはdocument幅とviewport幅が一致。合成JSON/manifestの一時読込とSHA検証、2実験の比較選択、Spaceキーでの選択、モデル検索フィルターを確認。合成値は例示専用として表示。観測要求34件はすべてlocalhostで、外部origin要求は0件。デスクトップはscrollWidth 1265px / viewport 1280pxで横方向のoverflowなし。
-- 変更後の独立レビューでは実行インターフェース（API/CLI/IDE等）の比較漏れ1件が追加で見つかった。`agent.interface`を比較対象に含め、差があれば直接比較不可とするテスト・仕様記述を追加した。再実行した`npm run check`は74/74成功、root build、viewer build、viewer validate、`git diff --check`も成功。
+- 変更後の独立レビューでは実行インターフェース（API/CLI/IDE等）の比較漏れ1件が追加で見つかった。`agent.interface`を比較対象に含め、差があれば直接比較不可とするテスト・仕様記述を追加した。再実行した`npm run check`は75/75成功、root build、viewer build、viewer validate、`git diff --check`も成功。
+- 初回pushのGitHub Actions run `40236624094`はLinux Next.js exportにのみ現れる`_not-found/__next._not-found.__PAGE__.txt`を未許可として検出し、`viewer:validate`で失敗した。Windowsには存在しないため、必須成果物から除き、出力に存在するときだけ許容するプラットフォーム限定の正確なallowlistへ移した。未知の隣接ファイルを拒否する回帰テストを追加。ローカルの最終`viewer:validate`は成功し、次のpushでCIを再確認する。
 - WebKitは未検証。GitHub Actionsの最終HEAD CIはpush後に確認する。ローカルブラウザ試験は実験データを公開・登録していない。
 
 ### 残存事項

@@ -15,6 +15,7 @@ import path from "node:path";
 import test, { type TestContext } from "node:test";
 import {
   FRAMEWORK_OUTPUT_FILES,
+  OPTIONAL_FRAMEWORK_OUTPUT_FILES,
   validatePublicViewerFiles,
 } from "../scripts/public-viewer-validation.mjs";
 import { registerPublicBenchmark } from "../scripts/public-benchmark-registration.ts";
@@ -66,6 +67,18 @@ test("viewer validates public sample and exact manifest bytes", async () => {
     await validatePublicViewerFiles(fixture.paths);
     const unexpected = path.join(fixture.outputDir, "_next", "0123456789abcdefghij", "private.txt");
     await writeFile(unexpected, "unregistered");
+    await assert.rejects(validatePublicViewerFiles(fixture.paths), /Unexpected file/);
+  });
+
+  test("public viewer allows only known platform-specific Next route artifacts", async (t) => {
+    const fixture = await createViewerValidationFixture(t);
+    const routeArtifact = OPTIONAL_FRAMEWORK_OUTPUT_FILES[0];
+    const artifactPath = path.join(fixture.outputDir, ...routeArtifact.split("/"));
+    await mkdir(path.dirname(artifactPath), { recursive: true });
+    await writeFile(artifactPath, "generated route artifact");
+    await validatePublicViewerFiles(fixture.paths);
+
+    await writeFile(path.join(path.dirname(artifactPath), "private.txt"), "unexpected");
     await assert.rejects(validatePublicViewerFiles(fixture.paths), /Unexpected file/);
   });
   assert.equal(pair.document.dataKind, "synthetic_sample");
