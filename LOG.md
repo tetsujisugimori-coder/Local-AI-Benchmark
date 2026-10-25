@@ -364,10 +364,17 @@
 - PythonのMarkdown相対リンク検査（README、研究README、公開形式仕様）: 全参照先が存在。
 - `git diff --check`: 成功。既存の`.gitignore`規則`/.local-data/`が`.local-data/cli-agents/`を除外し、`git ls-files .local-data`は空。秘密資料は配置していない。
 - WebKit実行環境は利用できず、WebKit検証は未実施。Playwright/Puppeteerも依存にないため追加していない。
-- GitHub Actions workflowがないためCIは未確認。Draft PR作成後にGitHub checksの有無を確認する。
+- GitHub Actions workflowがないためCIは未確認。Draft PR作成後の`gh pr checks 8`は`no checks reported`（終了コード1）で、GitHub CI結果は存在しない。CI成功とは扱わない。
 
 ### 未実施・制約
 
 - 実ベンチマーク、CLIエージェントの自動実行、外部送信・Web公開は実施していない。
 - 秘密パターン検出は完全な漏えい防止を保証せず、公開前のプレビューと人間による確認を必須とする。
 - WebKitおよびGitHub CI checksは未確認。PRはDraftのままとし、マージ・auto-merge・本番公開を行わない。
+
+### GitHub作業結果
+
+- Issue [#7](https://github.com/tetsujisugimori-coder/Local-AI-Benchmark/issues/7)を追跡用として使用した。
+- 専用ブランチ`feature/public-benchmark-export`をpushし、[#8](https://github.com/tetsujisugimori-coder/Local-AI-Benchmark/pull/8)をbase `main`のDraft PRとして作成した。
+- 実装コミット`551419755929f52a1c5190173dd2dc4520e41bf7`を含む最終PR HEADについて`gh pr checks 8`を実行したが、`no checks reported`（終了コード1）。GitHub CIは未実行・未確認。
+- PR #6はMergedのまま変更していない。PR #8はDraft / OPENで、merge、auto-merge、本番公開は行っていない。
