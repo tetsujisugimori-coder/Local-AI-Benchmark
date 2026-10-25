@@ -1,0 +1,2 @@
+viewer/public/*.json text eol=lf
+viewer/public/**/*.json text eol=lf

@@ -510,3 +510,5 @@
 - 評価項目ID・説明を個別に比較するよう修正。公開説明が異なる場合は直接比較不可、どちらかが非公開/未観測なら参考比較として不明点を表示する回帰テストを追加した。比較仕様書も更新した。
 - 新しい回帰テストは最初、未観測説明の処理を配列全体として比較してしまう実装上の問題を検出した。各criterion IDごとに観測値を比較するよう修正し、`node --test --test-name-pattern="criterion description" tests/public-benchmark-viewer.test.ts`で1/1成功。
 - 最終再検証後は`npm run check`が60/60成功、`npm run build`、`npm run viewer:build`、`npm run viewer:validate`、`git diff --check`がすべて成功。
+- Draft PR作成後の最初のGitHub Actions run `40230185799`では`check`、root build、viewer buildは成功したが、Linux上の`viewer:validate`でmanifest SHA照合が失敗。原因はWindowsの`core.autocrlf`で合成JSONのCRLFがGit blobではLFになり、manifestが作業ツリー側のCRLFをhashしていたこと。
+- `.gitattributes`で`viewer/public`内のJSONをLF固定し、catalog/合成JSON/manifestをLFへ正規化、manifestを実際のLF JSON bytesから再生成した。`npm run viewer:validate`はローカルで再成功。修正commitのpush後にCIを再実行し、Linux結果を確認する。

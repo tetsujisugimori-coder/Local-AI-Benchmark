@@ -2,7 +2,7 @@
   "format": "benchmark-public-manifest/v1",
   "fileName": "sample-public-benchmark.json",
   "algorithm": "SHA-256",
-  "sha256": "90888ca0399b794b051c0ce6ace91e303638988e1c7e36645f7819e94e5046bb",
+  "sha256": "21badc5536f764f4291cda91ef0a4708c10ace48692aa0cd46db52eb0c42712c",
   "scope": "exact downloaded UTF-8 JSON file bytes",
   "limitation": "SHA-256 verifies file identity only; it does not verify measurement accuracy or content safety."
 }
