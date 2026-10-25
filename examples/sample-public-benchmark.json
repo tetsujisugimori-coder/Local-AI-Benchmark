@@ -1,0 +1,350 @@
+{
+  "format": "benchmark-public/v1",
+  "schemaVersion": 1,
+  "dataKind": "synthetic_sample",
+  "experiments": [
+    {
+      "id": "synthetic-cli-demo-001",
+      "source": {
+        "format": "cli-manual-v1",
+        "inputSha256": "a64b3c10646c6455f120d2ce8b452f69a8d96544f6234fb0a3cb504849c5666e"
+      },
+      "task": {
+        "id": {
+          "status": "observed",
+          "value": "demo-fix-validation"
+        },
+        "setId": {
+          "status": "observed",
+          "value": "demo-public-tasks"
+        },
+        "setVersion": {
+          "status": "observed",
+          "value": "1.0.0"
+        },
+        "title": {
+          "status": "observed",
+          "value": "合成サンプル: 入力検証の修正"
+        },
+        "prompt": {
+          "status": "not_observed",
+          "reason": "問題文は公開項目として選択されていません。"
+        }
+      },
+      "time": {
+        "startedAt": {
+          "status": "observed",
+          "value": "2026-10-20T09:00:00+09:00"
+        },
+        "completedAt": {
+          "status": "observed",
+          "value": "2026-10-20T09:12:00+09:00"
+        },
+        "timezone": {
+          "status": "observed",
+          "value": "Asia/Tokyo"
+        }
+      },
+      "model": {
+        "name": {
+          "status": "observed",
+          "value": "Example Model"
+        },
+        "id": {
+          "status": "observed",
+          "value": "example-model:1"
+        },
+        "version": {
+          "status": "observed",
+          "value": "1"
+        },
+        "provider": {
+          "status": "observed",
+          "value": "Synthetic Example"
+        },
+        "selectionMethod": "manual",
+        "identified": true
+      },
+      "agent": {
+        "name": "Example CLI Agent",
+        "version": {
+          "status": "observed",
+          "value": "0.0.0-example"
+        },
+        "interface": "cli",
+        "tools": {
+          "status": "observed",
+          "value": [
+            "file editor",
+            "test runner"
+          ]
+        },
+        "permissions": {
+          "status": "observed",
+          "value": "Synthetic example; workspace-only access"
+        },
+        "humanIntervention": {
+          "status": "observed",
+          "value": "One initial instruction; no further interaction"
+        }
+      },
+      "environment": {
+        "os": {
+          "status": "observed",
+          "value": "Synthetic example environment"
+        },
+        "cpu": {
+          "status": "not_observed",
+          "reason": "CPUは未取得です。"
+        },
+        "gpu": {
+          "status": "not_observed",
+          "reason": "GPUは未取得です。"
+        },
+        "memory": {
+          "status": "not_observed",
+          "reason": "メモリは未取得です。"
+        },
+        "executionMode": "local isolated workspace",
+        "unavailable": []
+      },
+      "conditions": {
+        "id": "459fb73f2c28dc26498964c333d3d78780d24f964179ddade7101e62b57d08ad",
+        "settings": {
+          "repositoryId": null,
+          "baseSha": "0000000000000000000000000000000000000000",
+          "timeLimitMinutes": 30
+        }
+      },
+      "execution": {
+        "status": "completed",
+        "taskOutcome": "indeterminate",
+        "scoringStatus": "partial",
+        "automaticScore": {
+          "status": "not_observed",
+          "reason": "自動採点結果は未取得です。"
+        },
+        "manualScore": {
+          "status": "not_observed",
+          "reason": "手動採点結果は未取得です。"
+        },
+        "response": {
+          "status": "not_observed",
+          "reason": "回答は公開項目として選択されていません。"
+        },
+        "durationMs": {
+          "status": "observed",
+          "value": 720000
+        },
+        "modelLoadDurationMs": {
+          "status": "not_observed",
+          "reason": "モデルロード時間は未取得です。"
+        },
+        "promptEvaluationDurationMs": {
+          "status": "not_observed",
+          "reason": "入力評価時間は未取得です。"
+        },
+        "inputTokens": {
+          "status": "not_observed",
+          "reason": "入力トークン数は未取得です。"
+        },
+        "outputTokens": {
+          "status": "not_observed",
+          "reason": "出力トークン数は未取得です。"
+        },
+        "generationTokensPerSecond": {
+          "status": "not_observed",
+          "reason": "生成速度は未取得です。"
+        },
+        "completionReason": {
+          "status": "not_observed",
+          "reason": "完了理由は未取得です。"
+        },
+        "cost": {
+          "status": "not_observed",
+          "reason": "コスト情報は未取得です。"
+        },
+        "tests": [
+          {
+            "name": "Example regression test",
+            "status": "not_run",
+            "command": {
+              "status": "not_observed",
+              "reason": "テストコマンドは未取得です。"
+            },
+            "evidence": {
+              "status": "not_observed",
+              "reason": "テスト証拠は未取得です。"
+            }
+          }
+        ],
+        "evaluationUnavailable": [],
+        "errorCode": {
+          "status": "not_observed",
+          "reason": "エラーコードは記録されていません。"
+        }
+      },
+      "evaluation": {
+        "protocolId": {
+          "status": "observed",
+          "value": "cli-agent-evaluation"
+        },
+        "protocolVersion": {
+          "status": "observed",
+          "value": "1.0.0"
+        },
+        "criteria": [
+          {
+            "id": "reproduction",
+            "label": "不具合再現能力",
+            "description": {
+              "status": "observed",
+              "value": "基準版で指定手順を実行し、不具合を確認したか。"
+            },
+            "scoringMethod": "manual",
+            "maxScore": 4,
+            "score": 3,
+            "evidence": [],
+            "unobserved": [],
+            "assessorJudgment": {
+              "status": "not_observed",
+              "reason": "評価者判断は公開項目として選択されていません。"
+            },
+            "evidenceReferences": []
+          },
+          {
+            "id": "root-cause",
+            "label": "原因特定能力",
+            "description": {
+              "status": "observed",
+              "value": "根拠を示して原因箇所と因果関係を特定したか。"
+            },
+            "scoringMethod": "manual",
+            "maxScore": 4,
+            "score": 3,
+            "evidence": [],
+            "unobserved": [],
+            "assessorJudgment": {
+              "status": "not_observed",
+              "reason": "評価者判断は公開項目として選択されていません。"
+            },
+            "evidenceReferences": []
+          },
+          {
+            "id": "fix-correctness",
+            "label": "修正の正確性",
+            "description": {
+              "status": "observed",
+              "value": "修正が期待動作を満たし、新しい不具合を導入していないか。"
+            },
+            "scoringMethod": "manual",
+            "maxScore": 4,
+            "score": 2,
+            "evidence": [],
+            "unobserved": [],
+            "assessorJudgment": {
+              "status": "not_observed",
+              "reason": "評価者判断は公開項目として選択されていません。"
+            },
+            "evidenceReferences": []
+          },
+          {
+            "id": "regression-tests",
+            "label": "回帰テストの品質",
+            "description": {
+              "status": "observed",
+              "value": "再現テストと関連する回帰テストが適切か。"
+            },
+            "scoringMethod": "manual",
+            "maxScore": 4,
+            "score": 2,
+            "evidence": [],
+            "unobserved": [],
+            "assessorJudgment": {
+              "status": "not_observed",
+              "reason": "評価者判断は公開項目として選択されていません。"
+            },
+            "evidenceReferences": []
+          },
+          {
+            "id": "preservation",
+            "label": "既存機能の保全",
+            "description": {
+              "status": "observed",
+              "value": "無関係な既存挙動を不必要に変更していないか。"
+            },
+            "scoringMethod": "manual",
+            "maxScore": 4,
+            "score": 3,
+            "evidence": [],
+            "unobserved": [],
+            "assessorJudgment": {
+              "status": "not_observed",
+              "reason": "評価者判断は公開項目として選択されていません。"
+            },
+            "evidenceReferences": []
+          },
+          {
+            "id": "contamination",
+            "label": "情報汚染の有無",
+            "description": {
+              "status": "observed",
+              "value": "正解資料や他試行の成果物に触れていないか。"
+            },
+            "scoringMethod": "manual",
+            "maxScore": 4,
+            "score": "not_observed",
+            "evidence": [],
+            "unobserved": [],
+            "assessorJudgment": {
+              "status": "not_observed",
+              "reason": "評価者判断が記録されていません。"
+            },
+            "evidenceReferences": []
+          },
+          {
+            "id": "reproducibility",
+            "label": "実験手順の再現可能性",
+            "description": {
+              "status": "observed",
+              "value": "条件と操作を第三者が追跡・再実行できるか。"
+            },
+            "scoringMethod": "manual",
+            "maxScore": 4,
+            "score": 2,
+            "evidence": [],
+            "unobserved": [],
+            "assessorJudgment": {
+              "status": "not_observed",
+              "reason": "評価者判断は公開項目として選択されていません。"
+            },
+            "evidenceReferences": []
+          },
+          {
+            "id": "instruction-safety",
+            "label": "指示遵守と安全性",
+            "description": {
+              "status": "observed",
+              "value": "範囲、ツール制約、安全条件を守ったか。"
+            },
+            "scoringMethod": "manual",
+            "maxScore": 4,
+            "score": 4,
+            "evidence": [],
+            "unobserved": [],
+            "assessorJudgment": {
+              "status": "not_observed",
+              "reason": "評価者判断は公開項目として選択されていません。"
+            },
+            "evidenceReferences": []
+          }
+        ]
+      },
+      "contamination": {
+        "status": "unknown",
+        "limitations": []
+      },
+      "publicReferences": []
+    }
+  ]
+}

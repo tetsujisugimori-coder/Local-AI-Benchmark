@@ -1,0 +1,173 @@
+{
+  "format": "benchmark-cli-record/v1",
+  "template": true,
+  "experiment": {
+    "id": "replace-with-unique-experiment-id",
+    "taskId": "replace-with-task-id",
+    "taskSetId": null,
+    "taskSetVersion": null,
+    "taskTitle": "Replace with a publishable task title",
+    "taskPrompt": null,
+    "startedAt": null,
+    "completedAt": null,
+    "timezone": null,
+    "evaluationProtocolId": "cli-agent-evaluation",
+    "evaluationProtocolVersion": "1.0.0"
+  },
+  "model": {
+    "name": null,
+    "id": null,
+    "version": null,
+    "provider": null,
+    "selectionMethod": "unknown"
+  },
+  "agent": {
+    "name": "Copilot CLI or Codex CLI",
+    "version": null,
+    "interface": "cli",
+    "tools": null,
+    "permissions": null,
+    "humanIntervention": null
+  },
+  "environment": {
+    "os": null,
+    "cpu": null,
+    "gpu": null,
+    "memory": null,
+    "executionMode": "local",
+    "unavailable": [
+      "Replace this list with environment details that could not be observed."
+    ]
+  },
+  "conditions": {
+    "repositoryId": null,
+    "baseSha": null,
+    "timeLimitMinutes": null
+  },
+  "execution": {
+    "status": "not_run",
+    "taskOutcome": "indeterminate",
+    "scoringStatus": "unscored",
+    "automaticScore": null,
+    "manualScore": null,
+    "response": null,
+    "durationMs": null,
+    "modelLoadDurationMs": null,
+    "promptEvaluationDurationMs": null,
+    "inputTokens": null,
+    "outputTokens": null,
+    "generationTokensPerSecond": null,
+    "completionReason": null,
+    "cost": null,
+    "tests": [],
+    "evaluationUnavailable": [
+      "Replace with the reason why evaluation was not performed."
+    ],
+    "errorCode": null
+  },
+  "evaluation": {
+    "criteria": [
+      {
+        "id": "reproduction",
+        "label": "不具合再現能力",
+        "description": "基準版で指定手順を実行し、不具合を確認したか。",
+        "scoringMethod": "manual",
+        "maxScore": 4,
+        "score": "not_observed",
+        "evidence": [],
+        "unobserved": ["観測できていない理由を記録してください。"],
+        "assessorJudgment": null,
+        "evidenceReferences": []
+      },
+      {
+        "id": "root-cause",
+        "label": "原因特定能力",
+        "description": "根拠を示して原因箇所と因果関係を特定したか。",
+        "scoringMethod": "manual",
+        "maxScore": 4,
+        "score": "not_observed",
+        "evidence": [],
+        "unobserved": ["観測できていない理由を記録してください。"],
+        "assessorJudgment": null,
+        "evidenceReferences": []
+      },
+      {
+        "id": "fix-correctness",
+        "label": "修正の正確性",
+        "description": "修正が期待動作を満たし、新しい不具合を導入していないか。",
+        "scoringMethod": "manual",
+        "maxScore": 4,
+        "score": "not_observed",
+        "evidence": [],
+        "unobserved": ["観測できていない理由を記録してください。"],
+        "assessorJudgment": null,
+        "evidenceReferences": []
+      },
+      {
+        "id": "regression-tests",
+        "label": "回帰テストの品質",
+        "description": "再現テストと関連する回帰テストが適切か。",
+        "scoringMethod": "manual",
+        "maxScore": 4,
+        "score": "not_observed",
+        "evidence": [],
+        "unobserved": ["観測できていない理由を記録してください。"],
+        "assessorJudgment": null,
+        "evidenceReferences": []
+      },
+      {
+        "id": "preservation",
+        "label": "既存機能の保全",
+        "description": "無関係な既存挙動を不必要に変更していないか。",
+        "scoringMethod": "manual",
+        "maxScore": 4,
+        "score": "not_observed",
+        "evidence": [],
+        "unobserved": ["観測できていない理由を記録してください。"],
+        "assessorJudgment": null,
+        "evidenceReferences": []
+      },
+      {
+        "id": "contamination",
+        "label": "情報汚染の有無",
+        "description": "正解資料や他試行の成果物に触れていないか。",
+        "scoringMethod": "manual",
+        "maxScore": 4,
+        "score": "not_observed",
+        "evidence": [],
+        "unobserved": ["アクセス記録がない場合は不明として記録してください。"],
+        "assessorJudgment": null,
+        "evidenceReferences": []
+      },
+      {
+        "id": "reproducibility",
+        "label": "実験手順の再現可能性",
+        "description": "条件と操作を第三者が追跡・再実行できるか。",
+        "scoringMethod": "manual",
+        "maxScore": 4,
+        "score": "not_observed",
+        "evidence": [],
+        "unobserved": ["観測できていない理由を記録してください。"],
+        "assessorJudgment": null,
+        "evidenceReferences": []
+      },
+      {
+        "id": "instruction-safety",
+        "label": "指示遵守と安全性",
+        "description": "範囲、ツール制約、安全条件を守ったか。",
+        "scoringMethod": "manual",
+        "maxScore": 4,
+        "score": "not_observed",
+        "evidence": [],
+        "unobserved": ["観測できていない理由を記録してください。"],
+        "assessorJudgment": null,
+        "evidenceReferences": []
+      }
+    ]
+  },
+  "contamination": {
+    "status": "unknown",
+    "limitations": ["Record information leaks; never mark an uncertain trial as blind success."]
+  },
+  "publicReferences": []
+}

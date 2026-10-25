@@ -642,6 +642,140 @@ button:disabled {
   font-weight: 800;
 }
 
+.publicExportPanel {
+  display: grid;
+  gap: 16px;
+}
+
+.publicExportPanel .sectionIntro,
+.publicExportPanel .scoringNotice {
+  margin: 0;
+}
+
+.publicFileField input {
+  padding: 8px;
+}
+
+.publicFileField small,
+.publicSourceName,
+.publicExportFootnote {
+  overflow-wrap: anywhere;
+}
+
+.publicSourceName {
+  margin: -8px 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.publicTemplateLink {
+  width: fit-content;
+  max-width: 100%;
+  color: var(--accent-dark);
+  font-size: 0.84rem;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.publicDisclosure {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  min-width: 0;
+  margin: 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.publicDisclosure legend {
+  padding: 0 6px;
+  font-size: 0.85rem;
+  font-weight: 800;
+}
+
+.publicDisclosure label {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  min-width: 0;
+  line-height: 1.5;
+}
+
+.publicDisclosure input {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  margin: 1px 0 0;
+  accent-color: var(--accent);
+}
+
+.publicExportNotice,
+.publicValidation {
+  margin: 0;
+}
+
+.publicExportNotice ul,
+.publicValidation ul {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding-left: 22px;
+}
+
+.publicValidationSuccess {
+  margin: 0;
+  color: var(--accent-dark);
+  font-weight: 800;
+}
+
+.publicPreview {
+  min-width: 0;
+  border-top: 1px solid var(--line);
+}
+
+.publicPreview summary {
+  padding: 14px 0 8px;
+  color: var(--accent-dark);
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.publicPreview pre {
+  max-height: 480px;
+  margin: 6px 0 0;
+  padding: 14px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border-radius: 10px;
+  background: #102c23;
+  color: #e7f8ef;
+  font-size: 0.76rem;
+  line-height: 1.6;
+}
+
+.publicApproval {
+  margin: 0;
+}
+
+.publicDownloadActions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.publicDownloadActions > * {
+  min-width: 0;
+  min-height: 48px;
+  white-space: normal;
+}
+
+.publicDownloadActions .primaryButton {
+  width: auto;
+  padding: 8px 14px;
+}
+
 .resultsGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -965,6 +1099,11 @@ footer p {
   .metricsGrid,
   .settingsDisclosure dl {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .publicDisclosure,
+  .publicDownloadActions {
+    grid-template-columns: 1fr;
   }
 
   footer {

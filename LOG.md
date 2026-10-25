@@ -327,3 +327,47 @@
 
 - この段階ではエージェントの隔離実行、盲検実験、修正後テスト、独立採点は実施しない。
 - CI workflowが設定されていないため、GitHub上のビルド・テスト・artifact検査は未実行。ローカルの`npm run check`と`npm run build`を確認済み。
+
+## 2026-10-25 — 共通公開ベンチマーク形式と手動エクスポート（第1段階）
+
+### 作業前調査
+
+- `main`と`origin/main`の基準HEADは`7b09f02bc5e877b82d6699b62d5fdec64e356355`。作業開始時の作業ツリーはクリーンで、専用ブランチ`feature/public-benchmark-export`を作成した。
+- 第0段階Draft PR #6は既にMerged。変更・再利用せず、最新mainを基点とした。作業Issue [#7](https://github.com/tetsujisugimori-coder/Local-AI-Benchmark/issues/7)を作成した。
+- Ollama `BenchmarkDocument` schemaVersion 1、既存採点処理、JSON出力、Memo-Nexus連携、テスト・build設定を確認した。既存JSON型、実行処理、採点処理、Memo-Nexus形式、依存関係は変更していない。
+- `origin/main`にGitHub Actions workflowはなく、GitHub上のCI実行結果は存在しない。
+
+### 実装
+
+- `benchmark-public/v1`を既存形式から独立させ、Ollama schemaVersion 1と構造化`benchmark-cli-record/v1`のallowlist変換、検証、合成サンプルを追加した。
+- CLI評価記録テンプレートと第0段階Markdown記録との対応を文書化した。評価点・ゼロ・N/O・N/A、実行状態、評価不能、汚染状態を分離し、未実行を成功・失敗や実測値として扱わない。
+- 自由記述の初期出力を抑止し、問題文、回答、評価・テスト証拠と未観測理由・制約、評価者判断、テストコマンドを個別選択可能にした。既知の秘密パターンは停止し、PII候補は警告する。人間によるプレビュー確認と承認後にのみJSONとSHA-256 manifestをローカル保存する。外部送信・公開・CLI自動実行はない。
+- 未知の実験条件キーを拒否し、条件IDをキー順に依存しない正規化データから生成する。出力manifestを検証する`verifyIntegrityManifest`も追加した。SHA-256はファイル同一性のみを確認し、測定の正確性を証明しない。
+- 独立レビュー指摘（未選択の未観測メモ出力、未実行試行の失敗判定、条件IDのキー順依存）を修正し、回帰テストを追加した。
+
+### 変更範囲
+
+- `src/types/public-benchmark.ts`、`src/lib/public-benchmark.ts`
+- `src/components/public-data-export.tsx`、`src/components/benchmark-dashboard.tsx`、`src/app/globals.css`
+- `tests/public-benchmark.test.ts`
+- `public/cli-record-template.json`、`examples/sample-cli-record.json`、`examples/sample-public-benchmark.json`、`examples/sample-result.json`
+- `docs/public-benchmark-format.md`、`README.md`、`research/cli-agents/README.md`、`LOG.md`
+- npm依存追加なし。既存Ollama、採点、schemaVersion 1読込・出力、Memo-Nexusのソース変更なし。
+
+### 検証と結果
+
+- `npm run check`: 成功。TypeScript、ESLint、Nodeテスト37件すべて成功。
+- `npm run build`: 成功。Next.js production build、TypeScript処理、静的ページ生成が完了。
+- 合成公開サンプル: `validatePublicBenchmarkDocument`で検証し、秘密パターンスキャンはblock 0件・warning 0件。
+- Chromium/Edge 156.0.4314.42でproduction UIを375pxと390pxの各ビューポートで操作。両幅とも`scrollWidth`はviewport幅と一致し、JSON取込・スキーマ検証・プレビュー、承認前ダウンロード無効、Tab/Spaceによる承認後ダウンロード有効を確認した。
+- 同じブラウザ操作で承認後の公開JSONとmanifestを一時ディレクトリへダウンロードできることを確認し、検証後に一時ファイルを削除した。
+- PythonのMarkdown相対リンク検査（README、研究README、公開形式仕様）: 全参照先が存在。
+- `git diff --check`: 成功。既存の`.gitignore`規則`/.local-data/`が`.local-data/cli-agents/`を除外し、`git ls-files .local-data`は空。秘密資料は配置していない。
+- WebKit実行環境は利用できず、WebKit検証は未実施。Playwright/Puppeteerも依存にないため追加していない。
+- GitHub Actions workflowがないためCIは未確認。Draft PR作成後にGitHub checksの有無を確認する。
+
+### 未実施・制約
+
+- 実ベンチマーク、CLIエージェントの自動実行、外部送信・Web公開は実施していない。
+- 秘密パターン検出は完全な漏えい防止を保証せず、公開前のプレビューと人間による確認を必須とする。
+- WebKitおよびGitHub CI checksは未確認。PRはDraftのままとし、マージ・auto-merge・本番公開を行わない。
