@@ -1,0 +1,1102 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+import { PHASE2_PROBLEM_SET } from "../src/data/phase2-problems.ts";
+import { createBenchmarkDocument } from "../src/lib/benchmark-document.ts";
+import {
+  createIntegrityManifest,
+  createPublicBenchmarkDocument,
+  DEFAULT_PUBLIC_DISCLOSURE,
+  inspectPublicContent,
+  serializePublicBenchmarkDocument,
+  verifyIntegrityManifest,
+  validatePublicBenchmarkDocument,
+} from "../src/lib/public-benchmark.ts";
+import { LatestSelection } from "../src/lib/latest-selection.ts";
+import type {
+  BenchmarkResult,
+  BenchmarkSettings,
+} from "../src/types/benchmark.ts";
+import type {
+  CliManualRecord,
+  PublicDisclosureOptions,
+} from "../src/types/public-benchmark.ts";
+
+const settings: BenchmarkSettings = {
+  systemPrompt: "secret system prompt must not be copied",
+  temperature: 0,
+  seed: 42,
+  maxTokens: 512,
+  contextLength: 4096,
+  executionCount: 1,
+  runMode: "warm",
+  stream: false,
+  think: false,
+};
+
+async function readSampleOllama() {
+  const text = await readFile(
+    new URL("../examples/sample-result.json", import.meta.url),
+    "utf8",
+  );
+  return { input: JSON.parse(text) as unknown, text };
+}
+
+async function readSampleCli() {
+  const text = await readFile(
+    new URL("../examples/sample-cli-record.json", import.meta.url),
+    "utf8",
+  );
+  return { input: JSON.parse(text) as unknown, text };
+}
+
+function disclosure(
+  overrides: Partial<PublicDisclosureOptions> = {},
+): PublicDisclosureOptions {
+  return { ...DEFAULT_PUBLIC_DISCLOSURE, ...overrides };
+}
+
+function sampleResult(overrides: Partial<BenchmarkResult> = {}): BenchmarkResult {
+  return {
+    modelId: "qwen3.5:latest",
+    displayName: "Qwen 3.5",
+    runNumber: 1,
+    response: "Public-safe sample response.",
+    thinking: "Never disclose private chain of thought.",
+    settings,
+    startedAt: "2026-10-25T09:00:00.000+09:00",
+    finishedAt: "2026-10-25T09:00:01.000+09:00",
+    elapsedMs: 1_000,
+    totalDurationNs: 1_000_000_000,
+    loadDurationNs: 100_000_000,
+    promptEvalCount: 12,
+    promptEvalDurationNs: 100_000_000,
+    evalCount: 24,
+    evalDurationNs: 800_000_000,
+    promptTokensPerSecond: 120,
+    outputTokensPerSecond: 30,
+    doneReason: "stop",
+    error: null,
+    ...overrides,
+  };
+}
+
+function ollamaDocument(results: BenchmarkResult[]) {
+  return createBenchmarkDocument({
+    createdAt: "2026-10-25T00:00:00.000Z",
+    completedAt: "2026-10-25T00:00:02.000Z",
+    ollamaBaseUrl: "http://localhost:11434",
+    prompt: "A public-safe example prompt.",
+    settings,
+    results,
+  });
+}
+
+test("schemaVersion 1のOllama結果をallowlistで変換し未観測を保持する", async () => {
+  const { input, text } = await readSampleOllama();
+  const document = await createPublicBenchmarkDocument({ input, inputText: text });
+  const experiment = document.experiments[0];
+  const serialized = serializePublicBenchmarkDocument(document);
+
+  assert.equal(document.format, "benchmark-public/v1");
+  assert.equal(document.dataKind, "synthetic_sample");
+  assert.equal(experiment.source.format, "ollama-benchmark-v1");
+  assert.equal(experiment.execution.status, "completed");
+  assert.equal(experiment.execution.taskOutcome, "indeterminate");
+  assert.equal(experiment.execution.inputTokens.status, "observed");
+  assert.equal(experiment.execution.durationMs.status, "observed");
+  assert.equal(experiment.execution.cost.status, "not_applicable");
+  assert.equal(experiment.task.prompt.status, "not_observed");
+  assert.equal(experiment.execution.response.status, "not_observed");
+  assert.equal(experiment.agent.tools.status, "not_applicable");
+  assert.equal(experiment.contamination.status, "unknown");
+  assert.equal(experiment.environment.unavailable.length, 0);
+  assert.equal(experiment.source.inputSha256.length, 64);
+  assert.equal(experiment.conditions.id.length, 64);
+  assert.equal(serialized.includes("systemPrompt"), false);
+  assert.equal(serialized.includes("ollamaBaseUrl"), false);
+  assert.equal(serialized.includes("thinking"), false);
+  assert.equal(serialized.includes("これは実測値ではないサンプル回答です。"), false);
+  assert.doesNotMatch(serialized, /local-ai-benchmark\.example/);
+  validatePublicBenchmarkDocument(JSON.parse(serialized) as unknown);
+});
+
+test("明示選択したプロンプトと回答だけを公開射影へ含める", async () => {
+  const { input, text } = await readSampleOllama();
+  const result = await createPublicBenchmarkDocument({
+    input,
+    inputText: text,
+    disclosure: disclosure({
+      includeEvidence: true,
+      includeTaskPrompt: true,
+      includeResponses: true,
+    }),
+  });
+  assert.equal(result.experiments[0].task.prompt.status, "observed");
+  assert.equal(result.experiments[0].execution.response.status, "observed");
+  assert.equal(
+    result.experiments[0].task.prompt.status === "observed"
+      ? result.experiments[0].task.prompt.value
+      : "",
+    "ローカルAIの利点を簡潔に説明してください。",
+  );
+});
+
+test("failed・aborted・not_runとゼロ点を成功や未観測へ誤変換しない", async () => {
+  const base = sampleResult({
+    automaticScore: 0,
+    manualScore: null,
+    scoringStatus: "partial",
+    criterionScores: [
+      {
+        criterionId: "sample",
+        label: "形式",
+        status: "failed",
+        score: 0,
+        maxScore: 4,
+        note: "客観的な条件を満たしませんでした。",
+      },
+      {
+        criterionId: "human",
+        label: "内容",
+        status: "manual_required",
+        score: null,
+        maxScore: 4,
+        note: "未採点",
+      },
+    ],
+  });
+  const results: BenchmarkResult[] = [
+    base,
+    {
+      ...base,
+      modelId: "failed-model",
+      displayName: "Failed",
+      executionStatus: "failed",
+      error: { code: "TIMEOUT", message: "private error text" },
+      promptEvalCount: null,
+      evalCount: null,
+      automaticScore: null,
+      scoringStatus: "unscored",
+      criterionScores: [],
+    },
+    {
+      ...base,
+      modelId: "aborted-model",
+      displayName: "Aborted",
+      executionStatus: "aborted",
+      error: { code: "ABORTED", message: "cancelled" },
+      automaticScore: null,
+      scoringStatus: "unscored",
+      criterionScores: [],
+    },
+    {
+      ...base,
+      modelId: "not-run-model",
+      displayName: "Not run",
+      executionStatus: "not_run",
+      error: null,
+      elapsedMs: 0,
+      automaticScore: null,
+      scoringStatus: "unscored",
+      criterionScores: [],
+    },
+  ];
+  const input = ollamaDocument(results);
+  const text = JSON.stringify(input);
+  const document = await createPublicBenchmarkDocument({ input, inputText: text });
+  const [completed, failed, aborted, notRun] = document.experiments;
+
+  assert.equal(completed.execution.status, "completed");
+  assert.equal(completed.execution.taskOutcome, "indeterminate");
+  assert.deepEqual(completed.execution.automaticScore, {
+    status: "observed",
+    value: 0,
+  });
+  assert.equal(completed.evaluation.criteria[0].score, 0);
+  assert.equal(completed.evaluation.criteria[1].score, "not_observed");
+  assert.equal(failed.execution.status, "failed");
+  assert.deepEqual(failed.execution.errorCode, {
+    status: "observed",
+    value: "TIMEOUT",
+  });
+  assert.equal(
+    JSON.stringify(failed).includes("private error text"),
+    false,
+  );
+  assert.equal(aborted.execution.status, "aborted");
+  assert.equal(notRun.execution.status, "not_run");
+  assert.deepEqual(notRun.execution.durationMs, {
+    status: "not_applicable",
+    reason: "実行されていないため測定対象外です。",
+  });
+  assert.equal(notRun.execution.response.status, "not_applicable");
+  assert.equal(notRun.execution.errorCode.status, "not_applicable");
+});
+
+test("Phase 2の評価基準とゼロ点・手動未採点を分離して変換する", async () => {
+  const problem = PHASE2_PROBLEM_SET.problems[0];
+  const result = sampleResult({
+    automaticScore: 0,
+    manualScore: null,
+    scoringStatus: "partial",
+    criterionScores: [
+      {
+        criterionId: problem.evaluationCriteria[0].id,
+        label: problem.evaluationCriteria[0].label,
+        status: "failed",
+        score: 0,
+        maxScore: 4,
+        note: "形式的な評価に失敗しました。",
+      },
+    ],
+  });
+  const input = createBenchmarkDocument({
+    createdAt: "2026-10-25T00:00:00.000Z",
+    completedAt: "2026-10-25T00:00:02.000Z",
+    ollamaBaseUrl: "http://localhost:11434",
+    prompt: problem.prompt,
+    settings,
+    results: [result],
+    benchmarkMode: "phase2",
+    problem,
+  });
+  const document = await createPublicBenchmarkDocument({
+    input,
+    inputText: JSON.stringify(input),
+    disclosure: disclosure({
+      includeIdentifiers: true,
+      includeEvidence: true,
+    }),
+  });
+  const hiddenIdentifiers = await createPublicBenchmarkDocument({
+    input,
+    inputText: JSON.stringify(input),
+  });
+
+  assert.equal(document.experiments[0].task.setId.status, "observed");
+  assert.equal(document.experiments[0].task.setVersion.status, "observed");
+  assert.equal(document.experiments[0].evaluation.criteria.length, 3);
+  assert.equal(document.experiments[0].evaluation.criteria[0].score, 0);
+  assert.equal(document.experiments[0].evaluation.criteria[1].score, "not_observed");
+  assert.equal(document.experiments[0].execution.taskOutcome, "indeterminate");
+  assert.equal(hiddenIdentifiers.experiments[0].task.setId.status, "not_observed");
+  assert.equal(
+    hiddenIdentifiers.experiments[0].evaluation.protocolId.status,
+    "not_observed",
+  );
+  assert.equal(
+    hiddenIdentifiers.experiments[0].evaluation.criteria[0].id,
+    "criterion-1",
+  );
+});
+
+test("CLI JSON記録は8項目・N/O・汚染制約を維持し合成データを識別する", async () => {
+  const { input, text } = await readSampleCli();
+  const document = await createPublicBenchmarkDocument({
+    input,
+    inputText: text,
+    disclosure: disclosure({
+      includeIdentifiers: true,
+      includeAgentDetails: true,
+      includeEnvironmentDetails: true,
+      includeTaskPrompt: true,
+      includeResponses: true,
+      includeEvidence: true,
+      includeJudgments: true,
+    }),
+  });
+  const experiment = document.experiments[0];
+
+  assert.equal(document.dataKind, "synthetic_sample");
+  assert.equal(experiment.source.format, "cli-manual-v1");
+  assert.equal(experiment.agent.name, "Example CLI Agent");
+  assert.equal(experiment.model.identified, true);
+  assert.equal(experiment.evaluation.criteria.length, 8);
+  assert.equal(
+    experiment.evaluation.criteria[0].description.status,
+    "observed",
+  );
+  assert.equal(experiment.evaluation.criteria[5].score, "not_observed");
+  assert.equal(experiment.contamination.status, "unknown");
+  assert.equal(experiment.task.prompt.status, "observed");
+  assert.equal(experiment.execution.response.status, "observed");
+  assert.equal(experiment.execution.tests[0].status, "not_run");
+  assert.equal(experiment.execution.inputTokens.status, "not_observed");
+  assert.equal(experiment.execution.cost.status, "not_observed");
+  validatePublicBenchmarkDocument(document);
+});
+
+test("未選択のCLI参照・権限・介入情報は直接変換でも公開射影されない", async () => {
+  const { input } = await readSampleCli();
+  const record = structuredClone(input) as CliManualRecord;
+  record.agent.permissions = "PRIVATE permission note";
+  record.agent.humanIntervention = "PRIVATE operator name";
+  record.publicReferences = ["https://example.org/report"];
+  record.evaluation.criteria[0].evidenceReferences = [
+    "https://example.org/case/private",
+  ];
+
+  const document = await createPublicBenchmarkDocument({
+    input: record,
+    inputText: JSON.stringify(record),
+  });
+  const serialized = JSON.stringify(document);
+  assert.doesNotMatch(serialized, /PRIVATE permission note|PRIVATE operator name/);
+  assert.doesNotMatch(serialized, /example\.org|private-token/);
+  assert.doesNotMatch(serialized, /reproduction|cli-agent-evaluation/);
+  assert.equal(document.experiments[0].evaluation.criteria[0].id, "criterion-1");
+  assert.equal(document.experiments[0].agent.permissions.status, "not_observed");
+  assert.equal(document.experiments[0].agent.humanIntervention.status, "not_observed");
+
+  const selected = await createPublicBenchmarkDocument({
+    input: record,
+    inputText: JSON.stringify(record),
+    disclosure: disclosure({
+      includeAgentDetails: true,
+      includeReferences: true,
+    }),
+  });
+  assert.equal(
+    selected.experiments[0].agent.permissions.status,
+    "observed",
+  );
+  assert.equal(
+    selected.experiments[0].evaluation.criteria[0].evidenceReferences[0],
+    "https://example.org/case/private",
+  );
+  assert.deepEqual(selected.experiments[0].publicReferences, [
+    "https://example.org/report",
+  ]);
+
+  record.publicReferences = [
+    "https://" + "user" + ":" + "pass" + "@example.org/report",
+  ];
+  await assert.rejects(
+    createPublicBenchmarkDocument({
+      input: record,
+      inputText: JSON.stringify(record),
+    }),
+    /認証情報/,
+  );
+  record.publicReferences = ["https://example.org/report?api_key=private"];
+  await assert.rejects(
+    createPublicBenchmarkDocument({
+      input: record,
+      inputText: JSON.stringify(record),
+    }),
+    /機密クエリ/,
+  );
+  for (const internalReference of [
+    "http://127.0.0.1/private",
+    "http://[::ffff:192.168.1.1]/private",
+    "https://repo.home.arpa/task",
+  ]) {
+    record.publicReferences = [internalReference];
+    await assert.rejects(
+      createPublicBenchmarkDocument({
+        input: record,
+        inputText: JSON.stringify(record),
+      }),
+      /内部・ローカルリンク/,
+    );
+  }
+});
+
+test("回帰: URL validator rejects localhost and internal DNS variants", async () => {
+  const { input } = await readSampleCli();
+  const record = structuredClone(input) as CliManualRecord;
+  for (const reference of [
+    "http://localhost./internal",
+    "http://office.internal./private",
+    "http://localhost.localdomain/admin",
+  ]) {
+    record.publicReferences = [reference];
+    await assert.rejects(
+      createPublicBenchmarkDocument({
+        input: record,
+        inputText: JSON.stringify(record),
+      }),
+      /内部・ローカルリンク/,
+      reference,
+    );
+  }
+});
+
+test("回帰: URL validator rejects shared, private, and mapped IP ranges", async () => {
+  const { input } = await readSampleCli();
+  const record = structuredClone(input) as CliManualRecord;
+  for (const reference of [
+    "http://100.64.0.1/resource",
+    "http://127.0.0.1/private",
+    "http://192.168.1.20/admin",
+    "http://[::1]/admin",
+    "http://[::ffff:192.168.1.1]/private",
+    "http://[2001:db8::1]/documentation",
+    "http://[2001:2::1]/benchmark",
+    "http://[2002:0808::1]/six-to-four",
+  ]) {
+    record.publicReferences = [reference];
+    await assert.rejects(
+      createPublicBenchmarkDocument({
+        input: record,
+        inputText: JSON.stringify(record),
+      }),
+      /内部・ローカルリンク/,
+      reference,
+    );
+  }
+});
+
+test("回帰: Markdown内URLの内部ホストを句読点に関係なくblockする", async () => {
+  const { input } = await readSampleCli();
+  const record = structuredClone(input) as CliManualRecord;
+  record.evaluation.criteria[0].evidence = [
+    "[link](http://127.0.0.1/admin)",
+    "[link](http://localhost./internal)",
+    "See http://192.168.1.20/admin.",
+    "<http://localhost/private>",
+  ];
+  const document = await createPublicBenchmarkDocument({
+    input: record,
+    inputText: JSON.stringify(record),
+    disclosure: disclosure({ includeEvidence: true }),
+  });
+  const inspection = inspectPublicContent(document);
+  assert.ok(
+    inspection.blocked.some((entry) =>
+      entry.includes("internal or non-public URL"),
+    ),
+  );
+  assert.throws(
+    () => serializePublicBenchmarkDocument(document),
+    /秘密情報の可能性/,
+  );
+});
+
+test("回帰: 公開HTTPSリンクは許可し、すべての公開文字列を検査する", async () => {
+  const { input } = await readSampleCli();
+  const record = structuredClone(input) as CliManualRecord;
+  const publicUrl = "https://www.iana.org/benchmark/reference";
+  record.publicReferences = [publicUrl];
+  record.evaluation.criteria[0].evidenceReferences = [publicUrl];
+  record.evaluation.criteria[0].evidence = [`[guide](${publicUrl})`];
+  record.evaluation.criteria[0].assessorJudgment = `Reviewed ${publicUrl}`;
+  record.execution.tests[0].command = `check --docs ${publicUrl}`;
+  const disclosed = disclosure({
+    includeEvidence: true,
+    includeJudgments: true,
+    includeReferences: true,
+    includeTestCommands: true,
+  });
+  const document = await createPublicBenchmarkDocument({
+    input: record,
+    inputText: JSON.stringify(record),
+    disclosure: disclosed,
+  });
+  assert.deepEqual(inspectPublicContent(document).blocked, []);
+  assert.doesNotThrow(() => serializePublicBenchmarkDocument(document));
+
+  record.execution.response = "See [admin](http://localhost./private)";
+  const withInternalResponse = await createPublicBenchmarkDocument({
+    input: record,
+    inputText: JSON.stringify(record),
+    disclosure: { ...disclosed, includeResponses: true },
+  });
+  assert.ok(
+    inspectPublicContent(withInternalResponse).blocked.some((entry) =>
+      entry.includes("internal or non-public URL"),
+    ),
+  );
+  assert.throws(
+    () => serializePublicBenchmarkDocument(withInternalResponse),
+    /秘密情報の可能性/,
+  );
+
+  for (const [field, value, options] of [
+    [
+      "response",
+      "See https://user:password@www.iana.org/private.",
+      { includeResponses: true },
+    ],
+    [
+      "test command",
+      "check https://www.iana.org/?access_token=private",
+      { includeTestCommands: true },
+    ],
+    [
+      "assessor judgment",
+      "Observed http://[::1]/admin.",
+      { includeJudgments: true },
+    ],
+  ] as const) {
+    const contentRecord = structuredClone(record) as CliManualRecord;
+    if (field === "response") {
+      contentRecord.execution.response = value;
+    } else if (field === "test command") {
+      contentRecord.execution.tests[0].command = value;
+    } else {
+      contentRecord.evaluation.criteria[0].assessorJudgment = value;
+    }
+    const contentDocument = await createPublicBenchmarkDocument({
+      input: contentRecord,
+      inputText: JSON.stringify(contentRecord),
+      disclosure: { ...disclosed, ...options },
+    });
+    assert.ok(
+      inspectPublicContent(contentDocument).blocked.length > 0,
+      `${field} must be checked`,
+    );
+    assert.throws(() => serializePublicBenchmarkDocument(contentDocument));
+  }
+});
+
+test("回帰: 有効な負のOllama seedを公開形式へ変換できる", async () => {
+  const input = ollamaDocument([sampleResult({ settings: { ...settings, seed: -1 } })]);
+  const publicDocument = await createPublicBenchmarkDocument({
+      input,
+      inputText: JSON.stringify(input),
+    });
+  assert.equal(publicDocument.experiments[0].conditions.settings.seed, -1);
+  validatePublicBenchmarkDocument(publicDocument);
+  assert.doesNotThrow(() =>
+    serializePublicBenchmarkDocument(publicDocument),
+  );
+});
+
+test("回帰: 通常・Phase 2・UTC・オフセット付きbenchmark IDを安全に変換する", async () => {
+  for (const benchmarkId of [
+    "benchmark-2026-10-25",
+    "2026-10-25T09-00-00",
+    "2026-10-25T00:00:00.000Z",
+    "2026-10-25T09:00:00.000+09:00",
+  ]) {
+    const source = ollamaDocument([sampleResult()]);
+    source.benchmarkId = benchmarkId;
+    const document = await createPublicBenchmarkDocument({
+      input: source,
+      inputText: JSON.stringify(source),
+    });
+    assert.match(document.experiments[0].id, /^exp-[a-f0-9]{64}$/);
+    validatePublicBenchmarkDocument(document);
+    assert.doesNotThrow(() => serializePublicBenchmarkDocument(document));
+  }
+  const duplicateRuns = ollamaDocument([
+    sampleResult(),
+    sampleResult(),
+  ]);
+  await assert.rejects(
+    createPublicBenchmarkDocument({
+      input: duplicateRuns,
+      inputText: JSON.stringify(duplicateRuns),
+    }),
+    /実験IDが空または重複/,
+  );
+});
+
+test("回帰: 既知CLI規約の欠落項目と重複IDを拒否する", async () => {
+  const { input } = await readSampleCli();
+  const missing = structuredClone(input) as CliManualRecord;
+  missing.evaluation.criteria.pop();
+  await assert.rejects(
+    createPublicBenchmarkDocument({
+      input: missing,
+      inputText: JSON.stringify(missing),
+    }),
+    /criterion|評価項目/,
+  );
+  const duplicate = structuredClone(input) as CliManualRecord;
+  duplicate.evaluation.criteria[1].id = duplicate.evaluation.criteria[0].id;
+  await assert.rejects(
+    createPublicBenchmarkDocument({
+      input: duplicate,
+      inputText: JSON.stringify(duplicate),
+    }),
+    /duplicate|重複/,
+  );
+
+  const futureProtocol = structuredClone(input) as CliManualRecord;
+  futureProtocol.experiment.evaluationProtocolId = "future-rubric";
+  futureProtocol.experiment.evaluationProtocolVersion = "2.0";
+  futureProtocol.evaluation.criteria.splice(1);
+  assert.doesNotReject(
+    createPublicBenchmarkDocument({
+      input: futureProtocol,
+      inputText: JSON.stringify(futureProtocol),
+    }),
+  );
+});
+
+test("回帰: 実行後の記録はconditions.idに影響しない", async () => {
+  const { input, text } = await readSampleCli();
+  const changed = structuredClone(input) as CliManualRecord;
+  changed.agent.humanIntervention = "Different post-run intervention note";
+  changed.evaluation.criteria[0].assessorJudgment =
+    "Changed after-run assessor note";
+  changed.evaluation.criteria[0].evidence.push("Changed evidence after the trial");
+  const original = await createPublicBenchmarkDocument({ input, inputText: text });
+  const afterRun = await createPublicBenchmarkDocument({
+    input: changed,
+    inputText: JSON.stringify(changed),
+  });
+  assert.equal(
+    original.experiments[0].conditions.id,
+    afterRun.experiments[0].conditions.id,
+  );
+  const selected = await createPublicBenchmarkDocument({
+    input,
+    inputText: text,
+    disclosure: disclosure({ includeIdentifiers: true }),
+  });
+  assert.equal(
+    original.experiments[0].conditions.id,
+    selected.experiments[0].conditions.id,
+  );
+});
+
+test("回帰: conditions.id distinguishes model IDs containing @", async () => {
+  const { input } = await readSampleCli();
+  const first = structuredClone(input) as CliManualRecord;
+  const second = structuredClone(input) as CliManualRecord;
+  first.model.id = "provider/model@2026-01";
+  second.model.id = "provider/model@2026-10";
+  const firstDocument = await createPublicBenchmarkDocument({
+    input: first,
+    inputText: JSON.stringify(first),
+  });
+  const secondDocument = await createPublicBenchmarkDocument({
+    input: second,
+    inputText: JSON.stringify(second),
+  });
+  assert.notEqual(
+    firstDocument.experiments[0].conditions.id,
+    secondDocument.experiments[0].conditions.id,
+  );
+  const unsafe = structuredClone(first) as CliManualRecord;
+  unsafe.model.id = "https://private.example/model";
+  await assert.rejects(
+    createPublicBenchmarkDocument({
+      input: unsafe,
+      inputText: JSON.stringify(unsafe),
+    }),
+    /安全に正規化できない/,
+  );
+});
+
+test("回帰: conditions.id normalizes unordered Unicode tool identifiers deterministically", async () => {
+  const { input } = await readSampleCli();
+  const first = structuredClone(input) as CliManualRecord;
+  const second = structuredClone(input) as CliManualRecord;
+  first.agent.tools = ["zeta", "café", "alpha"];
+  second.agent.tools = ["alpha", "cafe\u0301", "zeta"];
+  const firstDocument = await createPublicBenchmarkDocument({
+    input: first,
+    inputText: JSON.stringify(first),
+  });
+  const secondDocument = await createPublicBenchmarkDocument({
+    input: second,
+    inputText: JSON.stringify(second),
+  });
+  assert.equal(
+    firstDocument.experiments[0].conditions.id,
+    secondDocument.experiments[0].conditions.id,
+  );
+});
+
+test("回帰: model.identified reports source identity independent of disclosure", async () => {
+  const { input, text } = await readSampleCli();
+  const known = await createPublicBenchmarkDocument({
+    input,
+    inputText: text,
+  });
+  assert.equal(known.experiments[0].model.identified, true);
+  assert.equal(known.experiments[0].model.id.status, "not_observed");
+
+  const undisclosed = structuredClone(input) as CliManualRecord;
+  undisclosed.model.id = null;
+  const unknown = await createPublicBenchmarkDocument({
+    input: undisclosed,
+    inputText: JSON.stringify(undisclosed),
+  });
+  assert.equal(unknown.experiments[0].model.identified, false);
+
+  const disclosed = await createPublicBenchmarkDocument({
+    input,
+    inputText: text,
+    disclosure: disclosure({ includeIdentifiers: true }),
+  });
+  assert.equal(disclosed.experiments[0].model.identified, true);
+  assert.equal(disclosed.experiments[0].model.id.status, "observed");
+});
+
+test("未知形式、不正状態、範囲外点、未実行成功を拒否する", async () => {
+  const { input, text } = await readSampleCli();
+  const record = input as CliManualRecord;
+  await assert.rejects(
+    createPublicBenchmarkDocument({
+      input: { ...record, format: "future/v99" },
+      inputText: text,
+    }),
+    /未対応の入力形式/,
+  );
+  const invalidStatus = structuredClone(record);
+  invalidStatus.execution.status = "succeeded" as CliManualRecord["execution"]["status"];
+  await assert.rejects(
+    createPublicBenchmarkDocument({
+      input: invalidStatus,
+      inputText: JSON.stringify(invalidStatus),
+    }),
+    /必須項目または値が不正/,
+  );
+  const invalidScore = structuredClone(record);
+  invalidScore.evaluation.criteria[0].score = 5;
+  await assert.rejects(
+    createPublicBenchmarkDocument({
+      input: invalidScore,
+      inputText: JSON.stringify(invalidScore),
+    }),
+    /0〜4点/,
+  );
+  const invalidNumber = structuredClone(record);
+  invalidNumber.execution.durationMs = Number.NaN;
+  const invalidNumberBefore = JSON.stringify(invalidNumber);
+  await assert.rejects(
+    createPublicBenchmarkDocument({
+      input: invalidNumber,
+      inputText: invalidNumberBefore,
+    }),
+    /必須項目または値が不正/,
+  );
+  assert.equal(JSON.stringify(invalidNumber), invalidNumberBefore);
+  const secretCondition = structuredClone(record);
+  secretCondition.conditions.apiKey = "not-a-real-key";
+  await assert.rejects(
+    createPublicBenchmarkDocument({
+      input: secretCondition,
+      inputText: JSON.stringify(secretCondition),
+    }),
+    /CLI評価記録/,
+  );
+  const falseSuccess = structuredClone(record);
+  falseSuccess.execution.status = "not_run";
+  falseSuccess.execution.taskOutcome = "success";
+  await assert.rejects(
+    createPublicBenchmarkDocument({
+      input: falseSuccess,
+      inputText: JSON.stringify(falseSuccess),
+    }),
+    /未完了の実行を成功/,
+  );
+  const unobservedSuccess = structuredClone(record);
+  unobservedSuccess.execution.taskOutcome = "success";
+  unobservedSuccess.evaluation.criteria.forEach((criterion) => {
+    criterion.score = "not_observed";
+  });
+  await assert.rejects(
+    createPublicBenchmarkDocument({
+      input: unobservedSuccess,
+      inputText: JSON.stringify(unobservedSuccess),
+    }),
+    /成功判定には/,
+  );
+  const notRun = structuredClone(record);
+  notRun.execution.status = "not_run";
+  notRun.execution.taskOutcome = "failure";
+  notRun.execution.durationMs = null;
+  notRun.execution.response = null;
+  notRun.execution.automaticScore = null;
+  notRun.execution.manualScore = null;
+  notRun.execution.modelLoadDurationMs = null;
+  notRun.execution.promptEvaluationDurationMs = null;
+  notRun.execution.inputTokens = null;
+  notRun.execution.outputTokens = null;
+  notRun.execution.generationTokensPerSecond = null;
+  notRun.execution.completionReason = null;
+  notRun.execution.cost = null;
+  notRun.execution.errorCode = null;
+  await assert.rejects(
+    createPublicBenchmarkDocument({
+      input: notRun,
+      inputText: JSON.stringify(notRun),
+    }),
+    /未実行の試行を失敗/,
+  );
+  notRun.execution.taskOutcome = "indeterminate";
+  notRun.execution.tests.forEach((run) => {
+    run.status = "not_run";
+  });
+  notRun.evaluation.criteria.forEach((criterion) => {
+    criterion.score = "not_observed";
+  });
+  const notRunOutput = await createPublicBenchmarkDocument({
+    input: notRun,
+    inputText: JSON.stringify(notRun),
+  });
+  assert.equal(
+    notRunOutput.experiments[0].execution.durationMs.status,
+    "not_applicable",
+  );
+  assert.ok(
+    notRunOutput.experiments[0].evaluation.criteria.every(
+      (criterion) => criterion.score === "not_observed",
+    ),
+  );
+  const template = JSON.parse(
+    await readFile(
+      new URL("../public/cli-record-template.json", import.meta.url),
+      "utf8",
+    ),
+  ) as unknown;
+  await assert.rejects(
+    createPublicBenchmarkDocument({
+      input: template,
+      inputText: JSON.stringify(template),
+    }),
+    /テンプレートはそのまま公開できません/,
+  );
+});
+
+test("高確度の秘密パターンをブロックしPII候補は警告する", async () => {
+  const input = {
+    ...(await readSampleCli()).input as CliManualRecord,
+    sampleRecord: false,
+  };
+  input.execution.response = "example ghp_abcdefghijklmnopqrstuvwxyz0123456789";
+  input.evaluation.criteria[0].unobserved = [
+    "Local fixture at C:\\Users\\researcher\\answer-key.txt was not inspected.",
+  ];
+  const defaultDisclosureDocument = await createPublicBenchmarkDocument({
+    input,
+    inputText: JSON.stringify(input),
+  });
+  assert.equal(
+    JSON.stringify(defaultDisclosureDocument).includes("answer-key.txt"),
+    false,
+  );
+  const disclosedNotesDocument = await createPublicBenchmarkDocument({
+    input,
+    inputText: JSON.stringify(input),
+    disclosure: disclosure({ includeEvidence: true }),
+  });
+  assert.equal(
+    JSON.stringify(disclosedNotesDocument).includes("answer-key.txt"),
+    true,
+  );
+  const serializedInput = JSON.stringify(input);
+  const document = await createPublicBenchmarkDocument({
+    input,
+    inputText: serializedInput,
+    disclosure: disclosure({ includeResponses: true }),
+  });
+  const inspection = inspectPublicContent(document);
+  assert.ok(inspection.blocked.some((entry) => entry.includes("GitHub token")));
+
+  input.execution.response = "Contact test.person@example.org for details.";
+  const emailDocument = await createPublicBenchmarkDocument({
+    input,
+    inputText: JSON.stringify(input),
+    disclosure: disclosure({ includeResponses: true }),
+  });
+  const emailInspection = inspectPublicContent(emailDocument);
+  assert.equal(emailInspection.blocked.length, 0);
+  assert.ok(emailInspection.warnings.some((entry) => entry.includes("email")));
+  assert.throws(
+    () => serializePublicBenchmarkDocument(document),
+    /秘密情報の可能性/,
+  );
+
+  input.execution.response = "See internal console at http://192.168.1.20/admin.";
+  const privateHostDocument = await createPublicBenchmarkDocument({
+    input,
+    inputText: JSON.stringify(input),
+    disclosure: disclosure({ includeResponses: true }),
+  });
+  assert.ok(
+    inspectPublicContent(privateHostDocument).blocked.some((entry) =>
+      entry.includes("internal or non-public URL"),
+    ),
+  );
+  assert.throws(
+    () => serializePublicBenchmarkDocument(privateHostDocument),
+    /秘密情報の可能性/,
+  );
+});
+
+test("未知の元フィールドは公開射影へ複製しない", async () => {
+  const { input, text } = await readSampleOllama();
+  assert.ok(typeof input === "object" && input !== null);
+  const extended = {
+    ...(input as Record<string, unknown>),
+    privateInternalNote: "should never appear",
+  };
+  const document = await createPublicBenchmarkDocument({
+    input: extended,
+    inputText: JSON.stringify(extended),
+  });
+  assert.equal(JSON.stringify(document).includes("privateInternalNote"), false);
+  assert.equal(JSON.stringify(document).includes("should never appear"), false);
+  assert.notEqual(text, JSON.stringify(extended));
+});
+
+test("出力とSHA-256 manifestは同じ入力で決定的、改変を検出する", async () => {
+  const { input, text } = await readSampleCli();
+  const first = await createPublicBenchmarkDocument({ input, inputText: text });
+  const second = await createPublicBenchmarkDocument({ input, inputText: text });
+  const firstJson = serializePublicBenchmarkDocument(first);
+  const secondJson = serializePublicBenchmarkDocument(second);
+  const firstManifest = await createIntegrityManifest({
+    fileName: "example.json",
+    serializedDocument: firstJson,
+  });
+  const secondManifest = await createIntegrityManifest({
+    fileName: "example.json",
+    serializedDocument: secondJson,
+  });
+  const tamperedManifest = await createIntegrityManifest({
+    fileName: "example.json",
+    serializedDocument: firstJson.replace("indeterminate", "failure"),
+  });
+
+  assert.equal(firstJson, secondJson);
+  assert.deepEqual(firstManifest, secondManifest);
+  assert.equal(firstManifest.algorithm, "SHA-256");
+  assert.notEqual(firstManifest.sha256, tamperedManifest.sha256);
+  assert.equal(
+    await verifyIntegrityManifest({
+      manifest: firstManifest,
+      serializedDocument: firstJson,
+    }),
+    true,
+  );
+  assert.equal(
+    await verifyIntegrityManifest({
+      manifest: firstManifest,
+      serializedDocument: firstJson.replace("indeterminate", "failure"),
+    }),
+    false,
+  );
+  assert.match(firstManifest.limitation, /does not verify measurement accuracy/);
+});
+
+test("条件設定キー順が異なっても条件IDは一致する", async () => {
+  const { input, text } = await readSampleCli();
+  const record = input as CliManualRecord;
+  const reordered = {
+    ...record,
+    conditions: Object.fromEntries(
+      Object.entries(record.conditions).reverse(),
+    ),
+  };
+  const first = await createPublicBenchmarkDocument({ input, inputText: text });
+  const second = await createPublicBenchmarkDocument({
+    input: reordered,
+    inputText: JSON.stringify(reordered),
+  });
+  const disclosed = await createPublicBenchmarkDocument({
+    input,
+    inputText: text,
+    disclosure: disclosure({ includeEvidence: true }),
+  });
+  assert.equal(
+    first.experiments[0].conditions.id,
+    second.experiments[0].conditions.id,
+  );
+  assert.equal(
+    first.experiments[0].conditions.id,
+    disclosed.experiments[0].conditions.id,
+  );
+
+  const changedSetting = {
+    ...record,
+    conditions: { ...record.conditions, temperature: 0.75 },
+  };
+  const changed = await createPublicBenchmarkDocument({
+    input: changedSetting,
+    inputText: JSON.stringify(changedSetting),
+  });
+  assert.notEqual(
+    first.experiments[0].conditions.id,
+    changed.experiments[0].conditions.id,
+  );
+});
+
+test("最新ファイル選択の世代だけが非同期完了後も有効になる", async () => {
+  const selection = new LatestSelection();
+  let resolveFirst: ((value: string) => void) | undefined;
+  let resolveSecond: ((value: string) => void) | undefined;
+  const first = new Promise<string>((resolve) => {
+    resolveFirst = resolve;
+  });
+  const second = new Promise<string>((resolve) => {
+    resolveSecond = resolve;
+  });
+  const firstGeneration = selection.begin();
+  const secondGeneration = selection.begin();
+  resolveSecond?.("file B");
+  const secondResult = await second;
+  resolveFirst?.("file A");
+  const firstResult = await first;
+
+  const accepted = [
+    { generation: firstGeneration, result: firstResult },
+    { generation: secondGeneration, result: secondResult },
+  ].filter(({ generation }) => selection.isCurrent(generation));
+  assert.deepEqual(accepted.map(({ result }) => result), ["file B"]);
+});
+
+test("公開形式の不正な状態・点数・メタデータを検証で拒否する", async () => {
+  const { input, text } = await readSampleCli();
+  const document = await createPublicBenchmarkDocument({ input, inputText: text });
+  const wrongState = structuredClone(document) as unknown as Record<
+    string,
+    unknown
+  >;
+  const experiments = wrongState.experiments as Array<Record<string, unknown>>;
+  const execution = experiments[0].execution as Record<string, unknown>;
+  execution.status = "success";
+  assert.throws(
+    () => validatePublicBenchmarkDocument(wrongState),
+    /experiments\[0\]が不正/,
+  );
+
+  const wrongScore = structuredClone(document);
+  wrongScore.experiments[0].evaluation.criteria[0].score = 5;
+  assert.throws(
+    () => validatePublicBenchmarkDocument(wrongScore),
+    /experiments\[0\]が不正|評価点/,
+  );
+
+  const notRunWithMeasurements = structuredClone(document);
+  notRunWithMeasurements.experiments[0].execution.status = "not_run";
+  notRunWithMeasurements.experiments[0].execution.taskOutcome =
+    "indeterminate";
+  assert.throws(
+    () => validatePublicBenchmarkDocument(notRunWithMeasurements),
+    /not_run/,
+  );
+});
+
+test("公開用合成サンプルはsynthetic_sampleと形式検証済みデータとして明示される", async () => {
+  const text = await readFile(
+    new URL("../examples/sample-public-benchmark.json", import.meta.url),
+    "utf8",
+  );
+  const document: unknown = JSON.parse(text);
+  validatePublicBenchmarkDocument(document);
+  assert.equal(document.dataKind, "synthetic_sample");
+  assert.equal(document.experiments.length, 1);
+  assert.equal(
+    document.experiments[0].execution.response.status,
+    "not_observed",
+  );
+  assert.equal(document.experiments[0].contamination.status, "unknown");
+  const { input, text: sourceText } = await readSampleCli();
+  const regenerated = await createPublicBenchmarkDocument({
+    input,
+    inputText: sourceText,
+  });
+  assert.equal(
+    document.experiments[0].conditions.id,
+    regenerated.experiments[0].conditions.id,
+  );
+});

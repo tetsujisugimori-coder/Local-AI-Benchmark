@@ -31,6 +31,7 @@ import { ModelSelector } from "@/components/model-selector";
 import { ProgressPanel } from "@/components/progress-panel";
 import { ProblemSelector } from "@/components/problem-selector";
 import { ResultTable } from "@/components/result-table";
+import { PublicDataExport } from "@/components/public-data-export";
 
 const DEFAULT_SETTINGS: BenchmarkSettings = {
   systemPrompt: "",
@@ -609,6 +610,7 @@ export function BenchmarkDashboard({ githubUrl }: { githubUrl: string }) {
         onDownloadMemoNexus={downloadMemoNexus}
         onManualScoreChange={updateManualScore}
       />
+      <PublicDataExport />
 
       <footer>
         <p>

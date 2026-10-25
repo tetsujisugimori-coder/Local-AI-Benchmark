@@ -327,3 +327,134 @@
 
 - この段階ではエージェントの隔離実行、盲検実験、修正後テスト、独立採点は実施しない。
 - CI workflowが設定されていないため、GitHub上のビルド・テスト・artifact検査は未実行。ローカルの`npm run check`と`npm run build`を確認済み。
+
+## 2026-10-25 — 共通公開ベンチマーク形式と手動エクスポート（第1段階）
+
+### 作業前調査
+
+- `main`と`origin/main`の基準HEADは`7b09f02bc5e877b82d6699b62d5fdec64e356355`。作業開始時の作業ツリーはクリーンで、専用ブランチ`feature/public-benchmark-export`を作成した。
+- 第0段階Draft PR #6は既にMerged。変更・再利用せず、最新mainを基点とした。作業Issue [#7](https://github.com/tetsujisugimori-coder/Local-AI-Benchmark/issues/7)を作成した。
+- Ollama `BenchmarkDocument` schemaVersion 1、既存採点処理、JSON出力、Memo-Nexus連携、テスト・build設定を確認した。既存JSON型、実行処理、採点処理、Memo-Nexus形式、依存関係は変更していない。
+- `origin/main`にGitHub Actions workflowはなく、GitHub上のCI実行結果は存在しない。
+
+### 実装
+
+- `benchmark-public/v1`を既存形式から独立させ、Ollama schemaVersion 1と構造化`benchmark-cli-record/v1`のallowlist変換、検証、合成サンプルを追加した。
+- CLI評価記録テンプレートと第0段階Markdown記録との対応を文書化した。評価点・ゼロ・N/O・N/A、実行状態、評価不能、汚染状態を分離し、未実行を成功・失敗や実測値として扱わない。
+- 自由記述の初期出力を抑止し、問題文、回答、評価・テスト証拠と未観測理由・制約、評価者判断、テストコマンドを個別選択可能にした。既知の秘密パターンは停止し、PII候補は警告する。人間によるプレビュー確認と承認後にのみJSONとSHA-256 manifestをローカル保存する。外部送信・公開・CLI自動実行はない。
+- 未知の実験条件キーを拒否し、条件IDをキー順に依存しない正規化データから生成する。出力manifestを検証する`verifyIntegrityManifest`も追加した。SHA-256はファイル同一性のみを確認し、測定の正確性を証明しない。
+- 独立レビュー指摘（未選択の未観測メモ出力、未実行試行の失敗判定、条件IDのキー順依存）を修正し、回帰テストを追加した。
+
+### 変更範囲
+
+- `src/types/public-benchmark.ts`、`src/lib/public-benchmark.ts`
+- `src/components/public-data-export.tsx`、`src/components/benchmark-dashboard.tsx`、`src/app/globals.css`
+- `tests/public-benchmark.test.ts`
+- `public/cli-record-template.json`、`examples/sample-cli-record.json`、`examples/sample-public-benchmark.json`、`examples/sample-result.json`
+- `docs/public-benchmark-format.md`、`README.md`、`research/cli-agents/README.md`、`LOG.md`
+- npm依存追加なし。既存Ollama、採点、schemaVersion 1読込・出力、Memo-Nexusのソース変更なし。
+
+### 検証と結果
+
+- `npm run check`: 成功。TypeScript、ESLint、Nodeテスト37件すべて成功。
+- `npm run build`: 成功。Next.js production build、TypeScript処理、静的ページ生成が完了。
+- 合成公開サンプル: `validatePublicBenchmarkDocument`で検証し、秘密パターンスキャンはblock 0件・warning 0件。
+- Chromium/Edge 156.0.4314.42でproduction UIを375pxと390pxの各ビューポートで操作。両幅とも`scrollWidth`はviewport幅と一致し、JSON取込・スキーマ検証・プレビュー、承認前ダウンロード無効、Tab/Spaceによる承認後ダウンロード有効を確認した。
+- 同じブラウザ操作で承認後の公開JSONとmanifestを一時ディレクトリへダウンロードできることを確認し、検証後に一時ファイルを削除した。
+- PythonのMarkdown相対リンク検査（README、研究README、公開形式仕様）: 全参照先が存在。
+- `git diff --check`: 成功。既存の`.gitignore`規則`/.local-data/`が`.local-data/cli-agents/`を除外し、`git ls-files .local-data`は空。秘密資料は配置していない。
+- WebKit実行環境は利用できず、WebKit検証は未実施。Playwright/Puppeteerも依存にないため追加していない。
+- GitHub Actions workflowがないためCIは未確認。Draft PR作成後の`gh pr checks 8`は`no checks reported`（終了コード1）で、GitHub CI結果は存在しない。CI成功とは扱わない。
+
+### 未実施・制約
+
+- 実ベンチマーク、CLIエージェントの自動実行、外部送信・Web公開は実施していない。
+- 秘密パターン検出は完全な漏えい防止を保証せず、公開前のプレビューと人間による確認を必須とする。
+- WebKitおよびGitHub CI checksは未確認。PRはDraftのままとし、マージ・auto-merge・本番公開を行わない。
+
+### GitHub作業結果
+
+- Issue [#7](https://github.com/tetsujisugimori-coder/Local-AI-Benchmark/issues/7)を追跡用として使用した。
+- 専用ブランチ`feature/public-benchmark-export`をpushし、[#8](https://github.com/tetsujisugimori-coder/Local-AI-Benchmark/pull/8)をbase `main`のDraft PRとして作成した。
+- 実装コミット`551419755929f52a1c5190173dd2dc4520e41bf7`を含む最終PR HEADについて`gh pr checks 8`を実行したが、`no checks reported`（終了コード1）。GitHub CIは未実行・未確認。
+- PR #6はMergedのまま変更していない。PR #8はDraft / OPENで、merge、auto-merge、本番公開は行っていない。
+
+## 2026-10-25 — Draft PR #8 独立レビュー指摘修正
+
+### 作業開始時の状態
+
+- `git fetch origin`後、作業ブランチと`origin/feature/public-benchmark-export`は`ad68632f3b704146b510f346f131e007fed493a5`で一致。`origin/main`は`7b09f02bc5e877b82d6699b62d5fdec64e356355`。作業ツリーは開始時cleanで、競合・先行リモート更新なし。
+- 既存Draft PR #8を更新する対象として確認。main、Issue #7、PR #6、Ollama実行・既存採点・Memo-Nexus出力は変更しない。
+
+### 修正内容と再現確認
+
+- 公開射影を識別子、エージェント詳細、環境情報、参照URL、自由記述の明示選択で制御。未選択のCLI評価項目IDは`criterion-N`へ置き換え、Ollama/CLIの評価規約ID・版も既定で隠す。証拠参照URL、権限説明、人間介入、公開参照も選択されない限り複製しない。ライブラリの直接呼出しとシリアライズでも確認した。
+- URL資格情報・機密クエリ・非公開IPv4/IPv6・ローカル/内部ホストを検査。選択済み文章中の内部IP URLもシリアライズをブロックする。通常URLや個人情報候補は警告にとどめ、UIで人間の警告承認とプレビュー承認の両方を要求する。DNS解決やURLの公開状態は検査できない。
+- 既存Ollama seedの有限な負値を維持し、benchmark IDの日時・オフセットを含む実験IDはSHA-256由来の安全な形式に変換。通常、Phase 2、UTC、`+09:00`形式、重複IDを回帰検証した。
+- CLI規約は`cli-agent-evaluation@1.0.0`の組み合わせで既知8項目と各4点上限を検証。全規約で評価項目ID重複を拒否し、未知規約へ既知8項目を強制しない。0点、N/O、N/A、`not_run`の区別を保持する。
+- `conditions.id`を実験前のモデル・エージェント・環境・条件設定から正規化して算出。キー順、開示選択、評価証拠・判断、介入記録に依存せず、実行設定変更で変わることを確認。公開サンプルは新しい決定的IDで再生成し、`synthetic_sample`を維持した。
+- 非同期ファイル読込に世代管理を追加し、古い成功・失敗結果を無視。新規入力や公開選択の変更でプレビュー承認を解除し、検証中はダウンロード不可とした。
+- 独立レビューでは追加で「未選択の評価項目/規約IDの漏えい」と「文章中のprivate IPv4 URLが警告のみ」の2点を指摘。上記の公開射影・スキャナー変更と回帰テストで修正した。
+- Edge実機操作で警告表示時に375px幅の横溢れを再現し、公開パネルの最小トラック幅と警告文の折返しを修正。最終確認では375pxと390pxの両方でviewport幅とscroll幅が一致した。
+
+### 変更ファイル
+
+- `src/lib/public-benchmark.ts`、`src/lib/latest-selection.ts`、`src/types/public-benchmark.ts`
+- `src/components/public-data-export.tsx`、`src/app/globals.css`
+- `tests/public-benchmark.test.ts`（既存12件から18件へ6件追加）
+- `examples/sample-public-benchmark.json`、`docs/public-benchmark-format.md`、`README.md`、`LOG.md`
+
+### 検証結果
+
+- 修正前の再現では、公開ベンチマークの集中テスト17件中14件成功・3件失敗。未選択の内部情報漏えい、CLI規約検証不足、事後介入による条件ID変化を確認した。seed/日時のテストは当初変換だけだったため、後に公開形式検証・シリアライズ・重複IDまで検証する回帰ケースに強化した。
+- 最終`npm run check`: 成功。TypeScript、ESLint、全43テスト成功（失敗0）。
+- 最終`npm run build`: 成功。Next.js production build、型処理、静的ページ生成を完了。
+- `git diff --check`: exit 0。生成サンプルに対するGitのLF→CRLF変換注意のみで、空白エラーなし。
+- Edge 156 production UI: 375px/390px、JSON取込、ファイルAの読込遅延中にファイルBを選択して最新Bを採用、開示選択変更による承認解除、email警告と警告承認ゲート、キーボードSpaceによる操作、公開JSONとmanifestのローカルダウンロードを確認。警告状態の最終レイアウトも375px/390pxで横溢れなし。合成入力を使用。
+- SHA-256 manifest照合と改変検出、`synthetic_sample`維持、既存Ollama schemaVersion 1/Memo-Nexus関連を含む全テストを確認。
+- WebKitは実行環境がなく未検証。GitHub Actions workflowがないためCIは未確認（`no checks reported`は成功扱いしない）。
+
+### 残存制約
+
+- URL/秘密情報検出は完全ではなく、DNS解決、URL所有者・公開状態、課題やリポジトリの秘密性は判断できない。出力前の原文・プレビューの人間確認を必須とする。
+- CLIエージェントの実行、外部送信・公開、WebKit検証、GitHub CIは実施していない。
+
+## 2026-10-25 — Draft PR #8 第2回独立レビュー指摘修正
+
+### 作業開始時の状態と修正前再現
+
+- 作業対象は`feature/public-benchmark-export`のレビュー対象HEAD `253d523feb4621803705bba5279df40d5e3b607d`。`origin/main`は`7b09f02bc5e877b82d6699b62d5fdec64e356355`。PR #8は既存Draftとして維持し、新規PRは作成しない。
+- 修正前の回帰テストで、末尾ドット付きlocalhostが変換を通ること、`100.64.0.1`が非公開IPとして拒否されないこと、選択回答中の末尾ドット付き内部URLがブロックされないことを再現した。変更前の条件値正規化ルールでも、`provider/model@2026-01`と`provider/model@2026-10`がどちらも除外され、条件ID入力が衝突することを個別に確認した。
+- 修正前に追加した最初のテスト実行は22件中18件成功・4件失敗。うち3件は上記の対象不具合、残る1件は新規テストの組み立てミスであり、修正してから最終テストを実施した。
+
+### 修正内容
+
+- URL分類を共通化し、末尾ドット・大文字小文字を正規化して、localhost/localdomain、内部 suffix、private/special-use IPv4、共有CGNAT、非public IPv6、IPv4-mapped IPv6を拒否する。Markdownリンク・autolink・文章末尾の句読点からURL部分を抽出し、参照配列だけでなく、公開された回答、証拠、評価者コメント、テストコマンド等の全公開文字列を走査する。内部・不正・認証付き・機密クエリURLはserializationを停止し、公開HTTPSは警告付きで人間確認へ進める。
+- `conditions.id`は値を黙って削除せず、実行前識別情報をUnicode NFCへ正規化してハッシュ化する。オブジェクトキーはロケール非依存で整列し、意味上順序のない`tools`だけをコードユニット順で整列、他の配列順は保持する。URL・パス・資格情報らしい値、制御文字、512文字超は安全に扱えない条件として拒否する。評価・証拠・介入記録・公開選択は引き続き条件IDから除外する。
+- `model.identified`は公開選択ではなく、元記録にモデル名とIDの両方が存在するかを表すよう変更。非公開状態は個々のObservationの`not_observed` reasonで区別し、v1の形状は維持した。
+- 合成サンプルの`conditions.id`を同じ入力から決定的に再生成。`synthetic_sample`を維持し、CLI入力から生成したIDとの一致をテストする。
+
+### 変更ファイル
+
+- `src/lib/public-benchmark.ts`
+- `tests/public-benchmark.test.ts`（7件追加。プロジェクト全体43件から50件へ）
+- `docs/public-benchmark-format.md`
+- `examples/sample-public-benchmark.json`
+- `LOG.md`
+
+### 検証結果
+
+- 修正後の`node --test tests/public-benchmark.test.ts`: 25/25成功。
+- `npm run check`: TypeScript、ESLint、全50テスト成功（失敗0）。
+- `npm run build`: 成功。
+- `git diff --check`: 成功。
+- Edge 156 headless実ブラウザで375px/390pxを確認。合成CLIファイルの取込、長いURLを含む回答の開示、警告承認ゲート、キーボードによる開示選択変更後の承認解除、承認前ダウンロード禁止、ローカルJSON/manifestの保存、SHA-256照合、`synthetic_sample`維持を確認。別の合成入力にあるlocalhost末尾ドットURLでは出力プレビューとダウンロードを停止。画面幅の横溢れはなし。
+- WebKitは未検証。GitHub CI状態はpush後に確認し、checksが存在しない場合は成功扱いしない。
+
+### 残存制約とGitHub作業
+
+- URLスキャナーはDNS解決・再バインド、URL所有者、公開許可、未検出の内部別名を完全には判断できない。条件IDのSHA-256は識別子の秘匿や実験の正確性を保証しない。プレビュー・原文の人間確認は必須。
+- 作業中の再fetchでremoteにcommit `81e9137`（この第2回修正依頼文の記録のみ）が追加されたことを確認した。内容を確認し、作業を上書きせず履歴へ取り込む。
+- 修正commit `4fe302a2119268b3c8b76fca36e804a57fa495c4`をremoteの`81e9137`上へrebaseし、force pushなしでpushした。既存PR #8本文へ第2回指摘の修正と検証結果を追記した。
+- `gh pr view 8`ではbase `main`、state `OPEN`、`isDraft: true`、head `4fe302a2119268b3c8b76fca36e804a57fa495c4`を確認。`gh workflow list`は空で、`gh pr checks 8`は`no checks reported`（終了コード1）。CI成功とは扱わない。LOGの最終記録を追加後に再pushし、PR状態を再確認する。
+- WebKit、GitHub Actions checksは未確認/利用不可。マージ、auto-merge、本番公開はしていない。

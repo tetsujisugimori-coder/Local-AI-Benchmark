@@ -11,6 +11,8 @@
 - [共通実験規約と評価基準](protocols/evaluation.md)
 - [実験記録テンプレート](protocols/experiment-record-template.md)
 - [ローカル隔離と公開前確認手順](protocols/local-isolation.md)
+- [公開用共通データ形式とCLI記録JSONへの対応](../../docs/public-benchmark-format.md)
+- Local-AI-Benchmark画面の「公開用データを作成」では、CLI評価記録JSONを読み込み、公開項目を確認して手動ダウンロードできます。CLIは自動起動されません。
 - [公開可能な課題・事例](cases/)
 - [公開可能な実験報告](reports/)
 - [Calculator Memo Issue #79の事例概要](cases/calculator-memo-issue-79.md)
