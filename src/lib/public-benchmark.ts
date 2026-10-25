@@ -162,31 +162,100 @@ function safeIdentifier(value: unknown): value is string {
   );
 }
 
-function isNonPublicHostname(value: string): boolean {
-  const hostname = value.toLowerCase().replace(/^\[|\]$/g, "");
-  const ipv4 = hostname.split(".").map(Number);
-  const isPrivateIpv4 =
-    ipv4.length === 4 &&
-    ipv4.every((part) => Number.isInteger(part) && part >= 0 && part <= 255) &&
-    (ipv4[0] === 0 ||
-      ipv4[0] === 10 ||
-      ipv4[0] === 127 ||
-      (ipv4[0] === 169 && ipv4[1] === 254) ||
-      (ipv4[0] === 172 && ipv4[1] >= 16 && ipv4[1] <= 31) ||
-      (ipv4[0] === 192 && ipv4[1] === 168) ||
-      ipv4[0] >= 224);
-  const ipv6Prefix = Number.parseInt(hostname.split(":")[0] || "0", 16);
-  const isNonGlobalIpv6 =
-    hostname.includes(":") &&
-    (ipv6Prefix < 0x2000 || ipv6Prefix > 0x3fff);
+function parseIpv6Groups(hostname: string): number[] | null {
+  let address = hostname;
+  if (address.includes(".")) {
+    const lastColon = address.lastIndexOf(":");
+    const ipv4 = address.slice(lastColon + 1).split(".").map(Number);
+    if (
+      ipv4.length !== 4 ||
+      ipv4.some((part) => !Number.isInteger(part) || part < 0 || part > 255)
+    ) {
+      return null;
+    }
+    address = `${address.slice(0, lastColon)}:${((ipv4[0] << 8) | ipv4[1]).toString(16)}:${((ipv4[2] << 8) | ipv4[3]).toString(16)}`;
+  }
+  const halves = address.split("::");
+  if (halves.length > 2) return null;
+  const parseHalf = (part: string): number[] | null => {
+    if (!part) return [];
+    const groups = part.split(":");
+    if (groups.some((group) => !/^[0-9a-f]{1,4}$/i.test(group))) return null;
+    return groups.map((group) => Number.parseInt(group, 16));
+  };
+  const left = parseHalf(halves[0]);
+  const right = parseHalf(halves[1] ?? "");
+  if (!left || !right) return null;
+  if (halves.length === 1) return left.length === 8 ? left : null;
+  const missing = 8 - left.length - right.length;
+  return missing > 0
+    ? [...left, ...Array.from({ length: missing }, () => 0), ...right]
+    : null;
+}
+
+function isNonPublicIpv4(parts: number[]): boolean {
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) {
+    return true;
+  }
+  const [a, b, c] = parts;
   return (
-    isPrivateIpv4 ||
-    isNonGlobalIpv6 ||
+    a === 0 ||
+    a === 10 ||
+    a === 127 ||
+    (a === 100 && b >= 64 && b <= 127) ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 &&
+      (b === 0 ||
+        b === 2 ||
+        (b === 88 && c === 99) ||
+        b === 168)) ||
+    (a === 198 && (b === 18 || b === 19 || b === 51)) ||
+    (a === 203 && b === 0 && c === 113) ||
+    a >= 224
+  );
+}
+
+function isNonPublicHostname(value: string): boolean {
+  const hostname = value
+    .toLowerCase()
+    .replace(/^\[|\]$/g, "")
+    .replace(/\.+$/, "");
+  if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(hostname)) {
+    return isNonPublicIpv4(hostname.split(".").map(Number));
+  }
+  if (hostname.includes(":")) {
+    const groups = parseIpv6Groups(hostname);
+    if (!groups) return true;
+    const mapped =
+      groups.slice(0, 5).every((group) => group === 0) &&
+      groups[5] === 0xffff;
+    if (mapped) return true;
+    const globallyRoutableUnicast = (groups[0] & 0xe000) === 0x2000;
+    const specialUseRange =
+      (groups[0] === 0x2001 && groups[1] <= 0x01ff) ||
+      (groups[0] === 0x2001 && groups[1] === 0x0db8) ||
+      groups[0] === 0x2002;
+    return !globallyRoutableUnicast || specialUseRange;
+  }
+  return (
     hostname === "localhost" ||
+    hostname === "localhost.localdomain" ||
+    hostname.endsWith(".localhost.localdomain") ||
     !hostname.includes(".") ||
     /\.(?:local|internal|test|invalid|example|lan|corp)$/.test(hostname) ||
-    hostname.endsWith(".home.arpa")
+    hostname.endsWith(".home.arpa") ||
+    hostname.endsWith(".localhost")
   );
+}
+
+function publicUrlIssue(url: URL): "credentials" | "sensitive-query" | "internal" | null {
+  if (url.username !== "" || url.password !== "") return "credentials";
+  if ([...url.searchParams.keys()].some((key) => SENSITIVE_QUERY_KEY.test(key))) {
+    return "sensitive-query";
+  }
+  if (isNonPublicHostname(url.hostname)) return "internal";
+  return null;
 }
 
 function validatePublicReference(reference: string): URL {
@@ -200,10 +269,7 @@ function validatePublicReference(reference: string): URL {
   }
   if (
     (url.protocol !== "https:" && url.protocol !== "http:") ||
-    url.username !== "" ||
-    url.password !== "" ||
-    isNonPublicHostname(url.hostname) ||
-    [...url.searchParams.keys()].some((key) => SENSITIVE_QUERY_KEY.test(key))
+    publicUrlIssue(url) !== null
   ) {
     throw new PublicBenchmarkError(
       "公開参照に認証情報、機密クエリ、または内部・ローカルリンクが含まれる可能性があります。",
@@ -944,27 +1010,39 @@ async function publicExperimentId(namespace: string, id: string): Promise<string
 
 function safeConditionValue(value: unknown): unknown {
   if (typeof value === "string") {
-    const normalized = value.trim();
-    return normalized.length <= 128 &&
-      /^[A-Za-z0-9][A-Za-z0-9 ._:+/-]*$/.test(normalized) &&
-      !/(?:api[_ -]?key|access[_ -]?token|password|secret|credential)\s*[:=]|https?:\/\/|[A-Z]:\\|@/i.test(
+    const normalized = value.trim().normalize("NFC");
+    if (
+      normalized.length > 512 ||
+      /[\u0000-\u001f\u007f]/.test(normalized) ||
+      /(?:api[_ -]?key|access[_ -]?token|password|secret|credential)\s*[:=]|https?:\/\/|[A-Z]:\\|\/(?:Users|home|private|tmp)\//i.test(
         normalized,
       )
-      ? normalized
-      : null;
+    ) {
+      throw new PublicBenchmarkError(
+        "条件IDに安全に正規化できない実行前の識別情報が含まれています。",
+      );
+    }
+    return normalized;
   }
   if (Array.isArray(value)) {
-    return value
-      .map(safeConditionValue)
-      .filter((entry) => entry !== null)
-      .sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
+    return value.map(safeConditionValue);
   }
   if (isRecord(value)) {
     return Object.fromEntries(
       Object.keys(value)
         .sort()
-        .map((key) => [key, safeConditionValue(value[key])])
-        .filter(([, entry]) => entry !== null),
+        .map((key) => [
+          key,
+          key === "tools" && Array.isArray(value[key])
+            ? [...value[key]]
+                .map(safeConditionValue)
+                .sort((left, right) => {
+                  const a = JSON.stringify(left);
+                  const b = JSON.stringify(right);
+                  return a < b ? -1 : a > b ? 1 : 0;
+                })
+            : safeConditionValue(value[key]),
+        ]),
     );
   }
   return value;
@@ -1119,7 +1197,7 @@ async function mapOllamaExperiment(
             reason: "モデル識別情報は公開項目として選択されていません。",
           },
       selectionMethod: "manual",
-      identified: disclosure.includeIdentifiers,
+      identified: Boolean(result.displayName?.trim() && result.modelId?.trim()),
     },
     agent: {
       name: disclosure.includeIdentifiers
@@ -1425,10 +1503,7 @@ async function mapCliExperiment(
         "モデル提供元は未取得です。",
       ),
       selectionMethod: model.selectionMethod,
-      identified:
-        disclosure.includeIdentifiers &&
-        model.name !== null &&
-        model.id !== null,
+      identified: Boolean(model.name?.trim() && model.id?.trim()),
     },
     agent: {
       name: disclosure.includeIdentifiers
@@ -1650,6 +1725,25 @@ function getStrings(value: unknown, path = "$"): Array<{ path: string; value: st
   return [];
 }
 
+function extractHttpUrls(text: string): string[] {
+  return [...text.matchAll(/https?:\/\/[^\s<>"']+/gi)].map((match) => {
+    let candidate = match[0].replace(/[.,!?;:]+$/g, "");
+    for (const [opening, closing] of [
+      ["(", ")"],
+      ["[", "]"],
+      ["{", "}"],
+    ]) {
+      while (
+        candidate.endsWith(closing) &&
+        candidate.split(closing).length > candidate.split(opening).length
+      ) {
+        candidate = candidate.slice(0, -1);
+      }
+    }
+    return candidate;
+  });
+}
+
 function canonicalize(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map(canonicalize);
@@ -1700,23 +1794,19 @@ export function inspectPublicContent(
         warnings.add(`${candidate.label} may be present in ${item.path}`);
       }
     }
-    for (const match of item.value.matchAll(/https?:\/\/[^\s"'<>]+/gi)) {
+    for (const candidate of extractHttpUrls(item.value)) {
       try {
-        const url = new URL(match[0]);
-        const queryKeys = [...url.searchParams.keys()];
-        if (
-          url.username ||
-          url.password ||
-          queryKeys.some((key) => SENSITIVE_QUERY_KEY.test(key))
-        ) {
+        const url = new URL(candidate);
+        const issue = publicUrlIssue(url);
+        if (issue === "credentials" || issue === "sensitive-query") {
           blocked.add(`sensitive URL content detected in ${item.path}`);
-        } else if (isNonPublicHostname(url.hostname)) {
+        } else if (issue === "internal") {
           blocked.add(`internal or non-public URL detected in ${item.path}`);
         } else {
           warnings.add(`URL visibility is not independently verified in ${item.path}`);
         }
       } catch {
-        warnings.add(`unverified URL may be present in ${item.path}`);
+        blocked.add(`unverified URL may be unsafe in ${item.path}`);
       }
     }
   }

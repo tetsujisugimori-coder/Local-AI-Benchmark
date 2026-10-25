@@ -403,6 +403,154 @@ test("未選択のCLI参照・権限・介入情報は直接変換でも公開�
   }
 });
 
+test("回帰: URL validator rejects localhost and internal DNS variants", async () => {
+  const { input } = await readSampleCli();
+  const record = structuredClone(input) as CliManualRecord;
+  for (const reference of [
+    "http://localhost./internal",
+    "http://office.internal./private",
+    "http://localhost.localdomain/admin",
+  ]) {
+    record.publicReferences = [reference];
+    await assert.rejects(
+      createPublicBenchmarkDocument({
+        input: record,
+        inputText: JSON.stringify(record),
+      }),
+      /内部・ローカルリンク/,
+      reference,
+    );
+  }
+});
+
+test("回帰: URL validator rejects shared, private, and mapped IP ranges", async () => {
+  const { input } = await readSampleCli();
+  const record = structuredClone(input) as CliManualRecord;
+  for (const reference of [
+    "http://100.64.0.1/resource",
+    "http://127.0.0.1/private",
+    "http://192.168.1.20/admin",
+    "http://[::1]/admin",
+    "http://[::ffff:192.168.1.1]/private",
+    "http://[2001:db8::1]/documentation",
+    "http://[2001:2::1]/benchmark",
+    "http://[2002:0808::1]/six-to-four",
+  ]) {
+    record.publicReferences = [reference];
+    await assert.rejects(
+      createPublicBenchmarkDocument({
+        input: record,
+        inputText: JSON.stringify(record),
+      }),
+      /内部・ローカルリンク/,
+      reference,
+    );
+  }
+});
+
+test("回帰: Markdown内URLの内部ホストを句読点に関係なくblockする", async () => {
+  const { input } = await readSampleCli();
+  const record = structuredClone(input) as CliManualRecord;
+  record.evaluation.criteria[0].evidence = [
+    "[link](http://127.0.0.1/admin)",
+    "[link](http://localhost./internal)",
+    "See http://192.168.1.20/admin.",
+    "<http://localhost/private>",
+  ];
+  const document = await createPublicBenchmarkDocument({
+    input: record,
+    inputText: JSON.stringify(record),
+    disclosure: disclosure({ includeEvidence: true }),
+  });
+  const inspection = inspectPublicContent(document);
+  assert.ok(
+    inspection.blocked.some((entry) =>
+      entry.includes("internal or non-public URL"),
+    ),
+  );
+  assert.throws(
+    () => serializePublicBenchmarkDocument(document),
+    /秘密情報の可能性/,
+  );
+});
+
+test("回帰: 公開HTTPSリンクは許可し、すべての公開文字列を検査する", async () => {
+  const { input } = await readSampleCli();
+  const record = structuredClone(input) as CliManualRecord;
+  const publicUrl = "https://www.iana.org/benchmark/reference";
+  record.publicReferences = [publicUrl];
+  record.evaluation.criteria[0].evidenceReferences = [publicUrl];
+  record.evaluation.criteria[0].evidence = [`[guide](${publicUrl})`];
+  record.evaluation.criteria[0].assessorJudgment = `Reviewed ${publicUrl}`;
+  record.execution.tests[0].command = `check --docs ${publicUrl}`;
+  const disclosed = disclosure({
+    includeEvidence: true,
+    includeJudgments: true,
+    includeReferences: true,
+    includeTestCommands: true,
+  });
+  const document = await createPublicBenchmarkDocument({
+    input: record,
+    inputText: JSON.stringify(record),
+    disclosure: disclosed,
+  });
+  assert.deepEqual(inspectPublicContent(document).blocked, []);
+  assert.doesNotThrow(() => serializePublicBenchmarkDocument(document));
+
+  record.execution.response = "See [admin](http://localhost./private)";
+  const withInternalResponse = await createPublicBenchmarkDocument({
+    input: record,
+    inputText: JSON.stringify(record),
+    disclosure: { ...disclosed, includeResponses: true },
+  });
+  assert.ok(
+    inspectPublicContent(withInternalResponse).blocked.some((entry) =>
+      entry.includes("internal or non-public URL"),
+    ),
+  );
+  assert.throws(
+    () => serializePublicBenchmarkDocument(withInternalResponse),
+    /秘密情報の可能性/,
+  );
+
+  for (const [field, value, options] of [
+    [
+      "response",
+      "See https://user:password@www.iana.org/private.",
+      { includeResponses: true },
+    ],
+    [
+      "test command",
+      "check https://www.iana.org/?access_token=private",
+      { includeTestCommands: true },
+    ],
+    [
+      "assessor judgment",
+      "Observed http://[::1]/admin.",
+      { includeJudgments: true },
+    ],
+  ] as const) {
+    const contentRecord = structuredClone(record) as CliManualRecord;
+    if (field === "response") {
+      contentRecord.execution.response = value;
+    } else if (field === "test command") {
+      contentRecord.execution.tests[0].command = value;
+    } else {
+      contentRecord.evaluation.criteria[0].assessorJudgment = value;
+    }
+    const contentDocument = await createPublicBenchmarkDocument({
+      input: contentRecord,
+      inputText: JSON.stringify(contentRecord),
+      disclosure: { ...disclosed, ...options },
+    });
+    assert.ok(
+      inspectPublicContent(contentDocument).blocked.length > 0,
+      `${field} must be checked`,
+    );
+    assert.throws(() => serializePublicBenchmarkDocument(contentDocument));
+  }
+});
+
 test("回帰: 有効な負のOllama seedを公開形式へ変換できる", async () => {
   const input = ollamaDocument([sampleResult({ settings: { ...settings, seed: -1 } })]);
   const publicDocument = await createPublicBenchmarkDocument({
@@ -504,6 +652,81 @@ test("回帰: 実行後の記録はconditions.idに影響しない", async () =>
     original.experiments[0].conditions.id,
     selected.experiments[0].conditions.id,
   );
+});
+
+test("回帰: conditions.id distinguishes model IDs containing @", async () => {
+  const { input } = await readSampleCli();
+  const first = structuredClone(input) as CliManualRecord;
+  const second = structuredClone(input) as CliManualRecord;
+  first.model.id = "provider/model@2026-01";
+  second.model.id = "provider/model@2026-10";
+  const firstDocument = await createPublicBenchmarkDocument({
+    input: first,
+    inputText: JSON.stringify(first),
+  });
+  const secondDocument = await createPublicBenchmarkDocument({
+    input: second,
+    inputText: JSON.stringify(second),
+  });
+  assert.notEqual(
+    firstDocument.experiments[0].conditions.id,
+    secondDocument.experiments[0].conditions.id,
+  );
+  const unsafe = structuredClone(first) as CliManualRecord;
+  unsafe.model.id = "https://private.example/model";
+  await assert.rejects(
+    createPublicBenchmarkDocument({
+      input: unsafe,
+      inputText: JSON.stringify(unsafe),
+    }),
+    /安全に正規化できない/,
+  );
+});
+
+test("回帰: conditions.id normalizes unordered Unicode tool identifiers deterministically", async () => {
+  const { input } = await readSampleCli();
+  const first = structuredClone(input) as CliManualRecord;
+  const second = structuredClone(input) as CliManualRecord;
+  first.agent.tools = ["zeta", "café", "alpha"];
+  second.agent.tools = ["alpha", "cafe\u0301", "zeta"];
+  const firstDocument = await createPublicBenchmarkDocument({
+    input: first,
+    inputText: JSON.stringify(first),
+  });
+  const secondDocument = await createPublicBenchmarkDocument({
+    input: second,
+    inputText: JSON.stringify(second),
+  });
+  assert.equal(
+    firstDocument.experiments[0].conditions.id,
+    secondDocument.experiments[0].conditions.id,
+  );
+});
+
+test("回帰: model.identified reports source identity independent of disclosure", async () => {
+  const { input, text } = await readSampleCli();
+  const known = await createPublicBenchmarkDocument({
+    input,
+    inputText: text,
+  });
+  assert.equal(known.experiments[0].model.identified, true);
+  assert.equal(known.experiments[0].model.id.status, "not_observed");
+
+  const undisclosed = structuredClone(input) as CliManualRecord;
+  undisclosed.model.id = null;
+  const unknown = await createPublicBenchmarkDocument({
+    input: undisclosed,
+    inputText: JSON.stringify(undisclosed),
+  });
+  assert.equal(unknown.experiments[0].model.identified, false);
+
+  const disclosed = await createPublicBenchmarkDocument({
+    input,
+    inputText: text,
+    disclosure: disclosure({ includeIdentifiers: true }),
+  });
+  assert.equal(disclosed.experiments[0].model.identified, true);
+  assert.equal(disclosed.experiments[0].model.id.status, "observed");
 });
 
 test("未知形式、不正状態、範囲外点、未実行成功を拒否する", async () => {
@@ -867,4 +1090,13 @@ test("公開用合成サンプルはsynthetic_sampleと形式検証済みデー�
     "not_observed",
   );
   assert.equal(document.experiments[0].contamination.status, "unknown");
+  const { input, text: sourceText } = await readSampleCli();
+  const regenerated = await createPublicBenchmarkDocument({
+    input,
+    inputText: sourceText,
+  });
+  assert.equal(
+    document.experiments[0].conditions.id,
+    regenerated.experiments[0].conditions.id,
+  );
 });

@@ -418,3 +418,41 @@
 
 - URL/秘密情報検出は完全ではなく、DNS解決、URL所有者・公開状態、課題やリポジトリの秘密性は判断できない。出力前の原文・プレビューの人間確認を必須とする。
 - CLIエージェントの実行、外部送信・公開、WebKit検証、GitHub CIは実施していない。
+
+## 2026-10-25 — Draft PR #8 第2回独立レビュー指摘修正
+
+### 作業開始時の状態と修正前再現
+
+- 作業対象は`feature/public-benchmark-export`のレビュー対象HEAD `253d523feb4621803705bba5279df40d5e3b607d`。`origin/main`は`7b09f02bc5e877b82d6699b62d5fdec64e356355`。PR #8は既存Draftとして維持し、新規PRは作成しない。
+- 修正前の回帰テストで、末尾ドット付きlocalhostが変換を通ること、`100.64.0.1`が非公開IPとして拒否されないこと、選択回答中の末尾ドット付き内部URLがブロックされないことを再現した。変更前の条件値正規化ルールでも、`provider/model@2026-01`と`provider/model@2026-10`がどちらも除外され、条件ID入力が衝突することを個別に確認した。
+- 修正前に追加した最初のテスト実行は22件中18件成功・4件失敗。うち3件は上記の対象不具合、残る1件は新規テストの組み立てミスであり、修正してから最終テストを実施した。
+
+### 修正内容
+
+- URL分類を共通化し、末尾ドット・大文字小文字を正規化して、localhost/localdomain、内部 suffix、private/special-use IPv4、共有CGNAT、非public IPv6、IPv4-mapped IPv6を拒否する。Markdownリンク・autolink・文章末尾の句読点からURL部分を抽出し、参照配列だけでなく、公開された回答、証拠、評価者コメント、テストコマンド等の全公開文字列を走査する。内部・不正・認証付き・機密クエリURLはserializationを停止し、公開HTTPSは警告付きで人間確認へ進める。
+- `conditions.id`は値を黙って削除せず、実行前識別情報をUnicode NFCへ正規化してハッシュ化する。オブジェクトキーはロケール非依存で整列し、意味上順序のない`tools`だけをコードユニット順で整列、他の配列順は保持する。URL・パス・資格情報らしい値、制御文字、512文字超は安全に扱えない条件として拒否する。評価・証拠・介入記録・公開選択は引き続き条件IDから除外する。
+- `model.identified`は公開選択ではなく、元記録にモデル名とIDの両方が存在するかを表すよう変更。非公開状態は個々のObservationの`not_observed` reasonで区別し、v1の形状は維持した。
+- 合成サンプルの`conditions.id`を同じ入力から決定的に再生成。`synthetic_sample`を維持し、CLI入力から生成したIDとの一致をテストする。
+
+### 変更ファイル
+
+- `src/lib/public-benchmark.ts`
+- `tests/public-benchmark.test.ts`（7件追加。プロジェクト全体43件から50件へ）
+- `docs/public-benchmark-format.md`
+- `examples/sample-public-benchmark.json`
+- `LOG.md`
+
+### 検証結果
+
+- 修正後の`node --test tests/public-benchmark.test.ts`: 25/25成功。
+- `npm run check`: TypeScript、ESLint、全50テスト成功（失敗0）。
+- `npm run build`: 成功。
+- `git diff --check`: 成功。
+- Edge 156 headless実ブラウザで375px/390pxを確認。合成CLIファイルの取込、長いURLを含む回答の開示、警告承認ゲート、キーボードによる開示選択変更後の承認解除、承認前ダウンロード禁止、ローカルJSON/manifestの保存、SHA-256照合、`synthetic_sample`維持を確認。別の合成入力にあるlocalhost末尾ドットURLでは出力プレビューとダウンロードを停止。画面幅の横溢れはなし。
+- WebKitは未検証。GitHub CI状態はpush後に確認し、checksが存在しない場合は成功扱いしない。
+
+### 残存制約とGitHub作業
+
+- URLスキャナーはDNS解決・再バインド、URL所有者、公開許可、未検出の内部別名を完全には判断できない。条件IDのSHA-256は識別子の秘匿や実験の正確性を保証しない。プレビュー・原文の人間確認は必須。
+- 作業中の再fetchでremoteにcommit `81e9137`（この第2回修正依頼文の記録のみ）が追加されたことを確認した。内容を確認し、作業を上書きせず履歴へ取り込む。
+- commit/push、PR #8本文追記、Draft/OPEN状態およびGitHub checksの最終確認を行う。最終状態は完了後に追記する。マージ、auto-merge、本番公開はしない。
