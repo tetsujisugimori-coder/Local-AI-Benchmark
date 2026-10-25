@@ -203,6 +203,10 @@ export type CliManualRecord = {
 };
 
 export type PublicDisclosureOptions = {
+  includeIdentifiers: boolean;
+  includeAgentDetails: boolean;
+  includeEnvironmentDetails: boolean;
+  includeReferences: boolean;
   includeTaskPrompt: boolean;
   includeResponses: boolean;
   includeEvidence: boolean;

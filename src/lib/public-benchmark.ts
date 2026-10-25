@@ -51,6 +51,20 @@ const TASK_OUTCOMES = new Set([
   "not_applicable",
 ]);
 const CONTAMINATION_STATUSES = new Set(["none_detected", "present", "unknown"]);
+const PHASE_ZERO_PROTOCOL_ID = "cli-agent-evaluation";
+const PHASE_ZERO_PROTOCOL_VERSION = "1.0.0";
+const PHASE_ZERO_CRITERION_IDS = new Set([
+  "reproduction",
+  "root-cause",
+  "fix-correctness",
+  "regression-tests",
+  "preservation",
+  "contamination",
+  "reproducibility",
+  "instruction-safety",
+]);
+const SENSITIVE_QUERY_KEY =
+  /(?:api[_-]?key|access[_-]?token|auth(?:orization)?|client[_-]?secret|credential|password|secret|session|signature|(?:^|[_-])(?:key|jwt|code|sig)(?:$|[_-])|oauth[_-]?code|token)/i;
 const PUBLIC_CONDITION_SETTING_KEYS = new Set([
   "repositoryId",
   "baseSha",
@@ -73,6 +87,10 @@ const TEST_STATUSES = new Set([
 ]);
 
 export const DEFAULT_PUBLIC_DISCLOSURE: PublicDisclosureOptions = {
+  includeIdentifiers: false,
+  includeAgentDetails: false,
+  includeEnvironmentDetails: false,
+  includeReferences: false,
   includeTaskPrompt: false,
   includeResponses: false,
   includeEvidence: false,
@@ -123,6 +141,116 @@ function isIsoDateTime(value: unknown): value is string {
       value,
     ) &&
     Number.isFinite(Date.parse(value))
+  );
+}
+
+function isTimezone(value: string | null): boolean {
+  return (
+    value === null ||
+    value === "UTC" ||
+    /^[+-]\d{2}:\d{2}$/.test(value) ||
+    /^[A-Za-z_+-]+(?:\/[A-Za-z0-9_+-]+)+$/.test(value)
+  );
+}
+
+function safeIdentifier(value: unknown): value is string {
+  return (
+    isString(value) &&
+    value.length <= 128 &&
+    /^[A-Za-z0-9][A-Za-z0-9._:@/+%-]*$/.test(value) &&
+    !value.includes("..")
+  );
+}
+
+function isNonPublicHostname(value: string): boolean {
+  const hostname = value.toLowerCase().replace(/^\[|\]$/g, "");
+  const ipv4 = hostname.split(".").map(Number);
+  const isPrivateIpv4 =
+    ipv4.length === 4 &&
+    ipv4.every((part) => Number.isInteger(part) && part >= 0 && part <= 255) &&
+    (ipv4[0] === 0 ||
+      ipv4[0] === 10 ||
+      ipv4[0] === 127 ||
+      (ipv4[0] === 169 && ipv4[1] === 254) ||
+      (ipv4[0] === 172 && ipv4[1] >= 16 && ipv4[1] <= 31) ||
+      (ipv4[0] === 192 && ipv4[1] === 168) ||
+      ipv4[0] >= 224);
+  const ipv6Prefix = Number.parseInt(hostname.split(":")[0] || "0", 16);
+  const isNonGlobalIpv6 =
+    hostname.includes(":") &&
+    (ipv6Prefix < 0x2000 || ipv6Prefix > 0x3fff);
+  return (
+    isPrivateIpv4 ||
+    isNonGlobalIpv6 ||
+    hostname === "localhost" ||
+    !hostname.includes(".") ||
+    /\.(?:local|internal|test|invalid|example|lan|corp)$/.test(hostname) ||
+    hostname.endsWith(".home.arpa")
+  );
+}
+
+function validatePublicReference(reference: string): URL {
+  let url: URL;
+  try {
+    url = new URL(reference);
+  } catch {
+    throw new PublicBenchmarkError(
+      "公開参照には認証情報を含まない公開HTTP(S) URLだけを指定してください。",
+    );
+  }
+  if (
+    (url.protocol !== "https:" && url.protocol !== "http:") ||
+    url.username !== "" ||
+    url.password !== "" ||
+    isNonPublicHostname(url.hostname) ||
+    [...url.searchParams.keys()].some((key) => SENSITIVE_QUERY_KEY.test(key))
+  ) {
+    throw new PublicBenchmarkError(
+      "公開参照に認証情報、機密クエリ、または内部・ローカルリンクが含まれる可能性があります。",
+    );
+  }
+  return url;
+}
+
+function validatePhaseZeroCriteria(
+  protocolId: unknown,
+  protocolVersion: unknown,
+  criteria: Array<{ id: string; maxScore: number; scoringMethod: string }>,
+): void {
+  const ids = criteria.map((criterion) => criterion.id);
+  if (new Set(ids).size !== ids.length) {
+    throw new PublicBenchmarkError("評価項目IDが重複しています。");
+  }
+  if (
+    protocolId === PHASE_ZERO_PROTOCOL_ID &&
+    protocolVersion === PHASE_ZERO_PROTOCOL_VERSION
+  ) {
+    if (
+      ids.length !== PHASE_ZERO_CRITERION_IDS.size ||
+      ids.some((id) => !PHASE_ZERO_CRITERION_IDS.has(id)) ||
+      criteria.some(
+        (criterion) =>
+          criterion.maxScore !== 4 || criterion.scoringMethod !== "manual",
+      )
+    ) {
+      throw new PublicBenchmarkError(
+        "cli-agent-evaluation@1.0.0には定義済み8評価項目（各0〜4点）が必要です。",
+      );
+    }
+  }
+}
+
+function disclosedText(
+  value: string | null | undefined,
+  include: boolean,
+  notIncludedReason: string,
+  missingReason: string,
+): Observation<string> {
+  return observationForText(
+    value ?? null,
+    include,
+    notIncludedReason,
+    missingReason,
   );
 }
 
@@ -386,10 +514,9 @@ function isPublicConditionSettings(
     "runMode",
     "ollamaVersion",
   ]);
-  const numberKeys = new Set([
+  const nonNegativeNumberKeys = new Set([
     "timeLimitMinutes",
     "temperature",
-    "seed",
     "maxTokens",
     "contextLength",
     "executionCount",
@@ -404,9 +531,32 @@ function isPublicConditionSettings(
       if (entry === null) {
         return true;
       }
+      if (key === "repositoryId") {
+        return (
+          isString(entry) &&
+          /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(entry)
+        );
+      }
+      if (key === "baseSha") {
+        return isString(entry) && /^[a-fA-F0-9]{40,64}$/.test(entry);
+      }
+      if (key === "runMode") {
+        return entry === "cold" || entry === "warm";
+      }
+      if (key === "ollamaVersion") {
+        return (
+          isString(entry) &&
+          /^\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?$/.test(entry)
+        );
+      }
+      if (key === "seed") {
+        return typeof entry === "number" && Number.isFinite(entry);
+      }
       return (
         (stringKeys.has(key) && isString(entry)) ||
-        (numberKeys.has(key) && isFiniteNonNegative(entry)) ||
+        (nonNegativeNumberKeys.has(key) &&
+          isFiniteNonNegative(entry) &&
+          (key === "temperature" || Number.isInteger(entry))) ||
         (booleanKeys.has(key) && typeof entry === "boolean")
       );
     })
@@ -440,9 +590,8 @@ function validateCliRecord(
   const evaluation = value.evaluation;
   const contamination = value.contamination;
   if (
-    !isString(experiment.id) ||
-    !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(experiment.id) ||
-    !isString(experiment.taskId) ||
+    !safeIdentifier(experiment.id) ||
+    !safeIdentifier(experiment.taskId) ||
     !isNullableString(experiment.taskSetId) ||
     !isNullableString(experiment.taskSetVersion) ||
     !isString(experiment.taskTitle) ||
@@ -450,6 +599,7 @@ function validateCliRecord(
     !isNullableString(experiment.startedAt) ||
     !isNullableString(experiment.completedAt) ||
     !isNullableString(experiment.timezone) ||
+    !isTimezone(experiment.timezone) ||
     !isNullableString(experiment.evaluationProtocolId) ||
     !isNullableString(experiment.evaluationProtocolVersion) ||
     !isNullableString(model.name) ||
@@ -488,6 +638,7 @@ function validateCliRecord(
     !isNullableString(execution.completionReason) ||
     !isStringArray(execution.evaluationUnavailable) ||
     !isNullableString(execution.errorCode) ||
+    (execution.errorCode !== null && !safeIdentifier(execution.errorCode)) ||
     !(execution.cost === null ||
       (isRecord(execution.cost) &&
         isFiniteNonNegative(execution.cost.amount) &&
@@ -517,7 +668,7 @@ function validateCliRecord(
   for (const [index, criterion] of evaluation.criteria.entries()) {
     if (
       !isRecord(criterion) ||
-      !isString(criterion.id) ||
+      !safeIdentifier(criterion.id) ||
       !isString(criterion.label) ||
       !isString(criterion.description) ||
       !["automatic", "manual"].includes(String(criterion.scoringMethod)) ||
@@ -536,6 +687,11 @@ function validateCliRecord(
       );
     }
   }
+  validatePhaseZeroCriteria(
+    experiment.evaluationProtocolId,
+    experiment.evaluationProtocolVersion,
+    evaluation.criteria,
+  );
   if (
     execution.status !== "completed" &&
     execution.taskOutcome === "success"
@@ -573,23 +729,13 @@ function validateCliRecord(
       "成功判定には、採点済みの評価項目または成功したテストの証拠が必要です。",
     );
   }
-  if (
-    !value.publicReferences.every((reference) => {
-      try {
-        const url = new URL(reference);
-        return (
-          (url.protocol === "https:" || url.protocol === "http:") &&
-          !url.username &&
-          !url.password
-        );
-      } catch {
-        return false;
-      }
-    })
-  ) {
-    throw new PublicBenchmarkError(
-      "公開参照には認証情報を含まないHTTP(S) URLだけを指定してください。",
-    );
+  for (const reference of value.publicReferences) {
+    validatePublicReference(reference);
+  }
+  for (const criterion of evaluation.criteria) {
+    for (const reference of criterion.evidenceReferences) {
+      validatePublicReference(reference);
+    }
   }
   if (
     (experiment.startedAt !== null && !isIsoDateTime(experiment.startedAt)) ||
@@ -669,7 +815,7 @@ function publicCriteriaFromOllama(
   status: ExecutionStatus,
 ): PublicEvaluationCriterion[] {
   const scoreById = new Map(scores.map((score) => [score.criterionId, score]));
-  return criteria.map((criterion) => {
+  return criteria.map((criterion, index) => {
     const score = scoreById.get(criterion.id);
     const publicScore: PublicScore =
       status === "not_run"
@@ -678,12 +824,16 @@ function publicCriteriaFromOllama(
           ? "not_observed"
           : score.score;
     return {
-      id: criterion.id,
-      label: criterion.label,
-      description: {
-        status: "observed",
-        value: criterion.description,
-      },
+      id: disclosure.includeIdentifiers ? criterion.id : `criterion-${index + 1}`,
+      label: disclosure.includeEvidence
+        ? criterion.label
+        : `Criterion ${index + 1}`,
+      description: disclosedText(
+        criterion.description,
+        disclosure.includeEvidence,
+        "評価基準の説明は公開項目として選択されていません。",
+        "評価基準の説明が記録されていません。",
+      ),
       scoringMethod: criterion.scoringMethod,
       maxScore: criterion.maxScore,
       score: publicScore,
@@ -708,10 +858,15 @@ function publicCriteriaFromCli(
   record: CliManualRecord,
   disclosure: PublicDisclosureOptions,
 ): PublicEvaluationCriterion[] {
-  return record.evaluation.criteria.map((criterion) => ({
-    id: criterion.id,
-    label: criterion.label,
-    description: { status: "observed", value: criterion.description },
+  return record.evaluation.criteria.map((criterion, index) => ({
+    id: disclosure.includeIdentifiers ? criterion.id : `criterion-${index + 1}`,
+    label: disclosure.includeEvidence ? criterion.label : `Criterion ${index + 1}`,
+    description: disclosedText(
+      criterion.description,
+      disclosure.includeEvidence,
+      "評価基準の説明は公開項目として選択されていません。",
+      "評価基準の説明が記録されていません。",
+    ),
     scoringMethod: criterion.scoringMethod,
     maxScore: criterion.maxScore,
     score: criterion.score,
@@ -723,7 +878,9 @@ function publicCriteriaFromCli(
       "評価者判断は公開項目として選択されていません。",
       "評価者判断が記録されていません。",
     ),
-    evidenceReferences: criterion.evidenceReferences,
+    evidenceReferences: disclosure.includeReferences
+      ? criterion.evidenceReferences
+      : [],
   }));
 }
 
@@ -781,12 +938,48 @@ function executionObservation<T>(
     : toObservation(value, notObservedReason);
 }
 
-function mapOllamaExperiment(
+async function publicExperimentId(namespace: string, id: string): Promise<string> {
+  return `exp-${await sha256Hex(`${namespace}\0${id}`)}`;
+}
+
+function safeConditionValue(value: unknown): unknown {
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    return normalized.length <= 128 &&
+      /^[A-Za-z0-9][A-Za-z0-9 ._:+/-]*$/.test(normalized) &&
+      !/(?:api[_ -]?key|access[_ -]?token|password|secret|credential)\s*[:=]|https?:\/\/|[A-Z]:\\|@/i.test(
+        normalized,
+      )
+      ? normalized
+      : null;
+  }
+  if (Array.isArray(value)) {
+    return value
+      .map(safeConditionValue)
+      .filter((entry) => entry !== null)
+      .sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
+  }
+  if (isRecord(value)) {
+    return Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .map((key) => [key, safeConditionValue(value[key])])
+        .filter(([, entry]) => entry !== null),
+    );
+  }
+  return value;
+}
+
+async function stableConditionsId(conditions: unknown): Promise<string> {
+  return sha256Hex(JSON.stringify(canonicalize(safeConditionValue(conditions))));
+}
+
+async function mapOllamaExperiment(
   document: BenchmarkDocument,
   result: BenchmarkResult,
   inputSha256: string,
   disclosure: PublicDisclosureOptions,
-): PublicBenchmarkExperiment {
+): Promise<PublicBenchmarkExperiment> {
   const status = executionStatus(result);
   const startedAt = result.startedAt;
   const criteria: Array<{
@@ -822,18 +1015,53 @@ function mapOllamaExperiment(
   if (!platform) missingEnvironment.push("OS/platform is not recorded.");
   if (!cpu) missingEnvironment.push("CPU is not recorded.");
   if (!memory) missingEnvironment.push("Memory is not recorded.");
+  const conditionsId = await stableConditionsId({
+    model: result.modelId,
+    agent: {
+      name: "Local-AI-Benchmark",
+      version: document.environment.appVersion,
+      interface: "api",
+    },
+    environment: {
+      os: platform,
+      cpu,
+      memory,
+      executionMode: "local-ollama",
+    },
+    settings: safeOllamaBaseSettings(document, result),
+  });
 
   return {
-    id: `${document.benchmarkId}-${encodeURIComponent(result.modelId)}-run-${result.runNumber}`,
+    id: await publicExperimentId(
+      "ollama",
+      `${document.benchmarkId}\0${result.modelId}\0${result.runNumber}`,
+    ),
     source: { format: "ollama-benchmark-v1", inputSha256 },
     task: {
-      id: observed(document.problemId, "問題IDが記録されていません。"),
-      setId: observed(document.problemSetId, "課題セットIDが記録されていません。"),
-      setVersion: observed(
+      id: disclosedText(
+        document.problemId,
+        disclosure.includeIdentifiers,
+        "課題識別情報は公開項目として選択されていません。",
+        "問題IDが記録されていません。",
+      ),
+      setId: disclosedText(
+        document.problemSetId,
+        disclosure.includeIdentifiers,
+        "課題識別情報は公開項目として選択されていません。",
+        "課題セットIDが記録されていません。",
+      ),
+      setVersion: disclosedText(
         document.problemSetVersion,
+        disclosure.includeIdentifiers,
+        "課題識別情報は公開項目として選択されていません。",
         "課題セット版が記録されていません。",
       ),
-      title: observed(document.problemTitle, "課題タイトルが記録されていません。"),
+      title: disclosedText(
+        document.problemTitle,
+        disclosure.includeIdentifiers,
+        "課題タイトルは公開項目として選択されていません。",
+        "課題タイトルが記録されていません。",
+      ),
       prompt: observationForText(
         document.request.prompt,
         disclosure.includeTaskPrompt,
@@ -871,17 +1099,36 @@ function mapOllamaExperiment(
             ),
     },
     model: {
-      name: observed(result.displayName, "モデル名が記録されていません。"),
-      id: observed(result.modelId, "モデルIDが記録されていません。"),
+      name: disclosedText(
+        result.displayName,
+        disclosure.includeIdentifiers,
+        "モデル識別情報は公開項目として選択されていません。",
+        "モデル名が記録されていません。",
+      ),
+      id: disclosedText(
+        result.modelId,
+        disclosure.includeIdentifiers,
+        "モデル識別情報は公開項目として選択されていません。",
+        "モデルIDが記録されていません。",
+      ),
       version: { status: "not_observed", reason: "モデル版は記録されていません。" },
-      provider: { status: "observed", value: "Ollama" },
+      provider: disclosure.includeIdentifiers
+        ? { status: "observed", value: "Ollama" }
+        : {
+            status: "not_observed",
+            reason: "モデル識別情報は公開項目として選択されていません。",
+          },
       selectionMethod: "manual",
-      identified: true,
+      identified: disclosure.includeIdentifiers,
     },
     agent: {
-      name: "Local-AI-Benchmark",
-      version: observed(
+      name: disclosure.includeIdentifiers
+        ? "Local-AI-Benchmark"
+        : "not disclosed",
+      version: disclosedText(
         document.environment.appVersion,
+        disclosure.includeIdentifiers,
+        "エージェント識別情報は公開項目として選択されていません。",
         "アプリバージョンが記録されていません。",
       ),
       interface: "api",
@@ -890,8 +1137,8 @@ function mapOllamaExperiment(
         reason: "Ollama APIの直接呼び出しではエージェントツールを使用しません。",
       },
       permissions: {
-        status: "not_applicable",
-        reason: "CLIエージェント権限は該当しません。",
+        status: "not_observed",
+        reason: "Ollama結果に権限記録はありません。",
       },
       humanIntervention: {
         status: "not_observed",
@@ -899,17 +1146,36 @@ function mapOllamaExperiment(
       },
     },
     environment: {
-      os: observed(platform, "OS/platformを取得できません。"),
-      cpu: observed(cpu, "CPU情報を取得できません。"),
+      os: disclosedText(
+        platform,
+        disclosure.includeEnvironmentDetails,
+        "環境情報は公開項目として選択されていません。",
+        "OS/platformを取得できません。",
+      ),
+      cpu: disclosedText(
+        cpu,
+        disclosure.includeEnvironmentDetails,
+        "環境情報は公開項目として選択されていません。",
+        "CPU情報を取得できません。",
+      ),
       gpu: { status: "not_observed", reason: "GPU情報は記録されていません。" },
-      memory: observed(memory, "メモリ情報を取得できません。"),
-      executionMode: "local-ollama",
-      unavailable: missingEnvironment.concat([
-        "Browser and GPU details are not recorded in schemaVersion 1.",
-      ]),
+      memory: disclosedText(
+        memory,
+        disclosure.includeEnvironmentDetails,
+        "環境情報は公開項目として選択されていません。",
+        "メモリ情報を取得できません。",
+      ),
+      executionMode: disclosure.includeEnvironmentDetails
+        ? "local-ollama"
+        : "not disclosed",
+      unavailable: disclosure.includeEnvironmentDetails
+        ? missingEnvironment.concat([
+            "Browser and GPU details are not recorded in schemaVersion 1.",
+          ])
+        : [],
     },
     conditions: {
-      id: `ollama-${document.benchmarkId}`,
+      id: conditionsId,
       settings: {
         ...safeOllamaBaseSettings(document, result),
         ollamaVersion: null,
@@ -973,9 +1239,10 @@ function mapOllamaExperiment(
         status,
         "生成速度が取得されていません。",
       ),
-      completionReason: executionObservation(
-        result.doneReason,
-        status,
+      completionReason: disclosedText(
+        status === "not_run" ? null : result.doneReason,
+        disclosure.includeEvidence,
+        "完了理由は公開項目として選択されていません。",
         "完了理由は記録されていません。",
       ),
       cost: {
@@ -983,10 +1250,11 @@ function mapOllamaExperiment(
         reason: "ローカルOllama結果にコスト情報はありません。",
       },
       tests: [],
-      evaluationUnavailable:
-        criteria.length === 0
+      evaluationUnavailable: disclosure.includeEvidence
+        ? criteria.length === 0
           ? ["評価項目が記録されていません。"]
-          : ["schemaVersion 1は独立したテスト結果を保持しません。"],
+          : ["schemaVersion 1は独立したテスト結果を保持しません。"]
+        : [],
       errorCode: status === "not_run"
         ? {
             status: "not_applicable",
@@ -1005,12 +1273,16 @@ function mapOllamaExperiment(
             },
     },
     evaluation: {
-      protocolId: observed(
+      protocolId: disclosedText(
         document.problemSetId,
+        disclosure.includeIdentifiers,
+        "評価規約識別情報は公開項目として選択されていません。",
         "評価規約IDが記録されていません。",
       ),
-      protocolVersion: observed(
+      protocolVersion: disclosedText(
         document.problemSetVersion,
+        disclosure.includeIdentifiers,
+        "評価規約識別情報は公開項目として選択されていません。",
         "評価規約バージョンが記録されていません。",
       ),
       criteria: publicCriteriaFromOllama(
@@ -1022,19 +1294,31 @@ function mapOllamaExperiment(
     },
     contamination: {
       status: "unknown",
-      limitations: [
-        "Information contamination was not recorded in schemaVersion 1.",
-      ],
+      limitations: disclosure.includeEvidence
+        ? ["Information contamination was not recorded in schemaVersion 1."]
+        : [],
     },
     publicReferences: [],
   };
 }
 
-function mapCliExperiment(
+function publicCliConditionSettings(
+  settings: CliManualRecord["conditions"],
+  includeIdentifiers: boolean,
+): CliManualRecord["conditions"] {
+  return Object.fromEntries(
+    Object.entries(settings).filter(
+      ([key]) =>
+        includeIdentifiers || (key !== "repositoryId" && key !== "baseSha"),
+    ),
+  );
+}
+
+async function mapCliExperiment(
   record: CliManualRecord,
   inputSha256: string,
   disclosure: PublicDisclosureOptions,
-): PublicBenchmarkExperiment {
+): Promise<PublicBenchmarkExperiment> {
   const experiment = record.experiment;
   const model = record.model;
   const agent = record.agent;
@@ -1045,18 +1329,52 @@ function mapCliExperiment(
   if (!environment.cpu) missingEnvironment.push("CPU is not recorded.");
   if (!environment.gpu) missingEnvironment.push("GPU is not recorded.");
   if (!environment.memory) missingEnvironment.push("Memory is not recorded.");
+  const conditionsId = await stableConditionsId({
+    model,
+    agent: {
+      name: agent.name,
+      version: agent.version,
+      interface: agent.interface,
+      tools: agent.tools,
+    },
+    environment: {
+      os: environment.os,
+      cpu: environment.cpu,
+      gpu: environment.gpu,
+      memory: environment.memory,
+      executionMode: environment.executionMode,
+    },
+    settings: record.conditions,
+  });
 
   return {
-    id: experiment.id,
+    id: await publicExperimentId("cli", experiment.id),
     source: { format: "cli-manual-v1", inputSha256 },
     task: {
-      id: { status: "observed", value: experiment.taskId },
-      setId: observed(experiment.taskSetId, "課題セットIDが記録されていません。"),
-      setVersion: observed(
+      id: disclosedText(
+        experiment.taskId,
+        disclosure.includeIdentifiers,
+        "課題識別情報は公開項目として選択されていません。",
+        "課題IDが記録されていません。",
+      ),
+      setId: disclosedText(
+        experiment.taskSetId,
+        disclosure.includeIdentifiers,
+        "課題識別情報は公開項目として選択されていません。",
+        "課題セットIDが記録されていません。",
+      ),
+      setVersion: disclosedText(
         experiment.taskSetVersion,
+        disclosure.includeIdentifiers,
+        "課題識別情報は公開項目として選択されていません。",
         "課題セット版が記録されていません。",
       ),
-      title: { status: "observed", value: experiment.taskTitle },
+      title: disclosedText(
+        experiment.taskTitle,
+        disclosure.includeIdentifiers,
+        "課題タイトルは公開項目として選択されていません。",
+        "課題タイトルが記録されていません。",
+      ),
       prompt: observationForText(
         experiment.taskPrompt,
         disclosure.includeTaskPrompt,
@@ -1082,37 +1400,106 @@ function mapCliExperiment(
       ),
     },
     model: {
-      name: observed(model.name, "モデル名は未取得です。"),
-      id: observed(model.id, "モデルIDは未取得です。"),
-      version: observed(model.version, "モデルバージョンは未取得です。"),
-      provider: observed(model.provider, "モデル提供元は未取得です。"),
+      name: disclosedText(
+        model.name,
+        disclosure.includeIdentifiers,
+        "モデル識別情報は公開項目として選択されていません。",
+        "モデル名は未取得です。",
+      ),
+      id: disclosedText(
+        model.id,
+        disclosure.includeIdentifiers,
+        "モデル識別情報は公開項目として選択されていません。",
+        "モデルIDは未取得です。",
+      ),
+      version: disclosedText(
+        model.version,
+        disclosure.includeIdentifiers,
+        "モデル識別情報は公開項目として選択されていません。",
+        "モデルバージョンは未取得です。",
+      ),
+      provider: disclosedText(
+        model.provider,
+        disclosure.includeIdentifiers,
+        "モデル識別情報は公開項目として選択されていません。",
+        "モデル提供元は未取得です。",
+      ),
       selectionMethod: model.selectionMethod,
-      identified: model.name !== null && model.id !== null,
+      identified:
+        disclosure.includeIdentifiers &&
+        model.name !== null &&
+        model.id !== null,
     },
     agent: {
-      name: agent.name,
-      version: observed(agent.version, "CLI/アプリバージョンは未取得です。"),
+      name: disclosure.includeIdentifiers
+        ? agent.name
+        : agent.name
+          ? "not disclosed"
+          : "not recorded",
+      version: disclosedText(
+        agent.version,
+        disclosure.includeIdentifiers,
+        "エージェント識別情報は公開項目として選択されていません。",
+        "CLI/アプリバージョンは未取得です。",
+      ),
       interface: agent.interface,
-      tools: observed(agent.tools, "利用可能なツールは未取得です。"),
-      permissions: observed(agent.permissions, "実行権限は未取得です。"),
-      humanIntervention: observed(
+      tools: disclosure.includeAgentDetails
+        ? observed(agent.tools, "利用可能なツールは未取得です。")
+        : {
+            status: "not_observed",
+            reason: "ツール情報は公開項目として選択されていません。",
+          },
+      permissions: disclosedText(
+        agent.permissions,
+        disclosure.includeAgentDetails,
+        "権限説明は公開項目として選択されていません。",
+        "実行権限は未取得です。",
+      ),
+      humanIntervention: disclosedText(
         agent.humanIntervention,
+        disclosure.includeAgentDetails,
+        "人間介入記録は公開項目として選択されていません。",
         "人間の介入状況は未取得です。",
       ),
     },
     environment: {
-      os: observed(environment.os, "OSは未取得です。"),
-      cpu: observed(environment.cpu, "CPUは未取得です。"),
-      gpu: observed(environment.gpu, "GPUは未取得です。"),
-      memory: observed(environment.memory, "メモリは未取得です。"),
-      executionMode: environment.executionMode,
-      unavailable: disclosure.includeEvidence
+      os: disclosedText(
+        environment.os,
+        disclosure.includeEnvironmentDetails,
+        "環境情報は公開項目として選択されていません。",
+        "OSは未取得です。",
+      ),
+      cpu: disclosedText(
+        environment.cpu,
+        disclosure.includeEnvironmentDetails,
+        "環境情報は公開項目として選択されていません。",
+        "CPUは未取得です。",
+      ),
+      gpu: disclosedText(
+        environment.gpu,
+        disclosure.includeEnvironmentDetails,
+        "環境情報は公開項目として選択されていません。",
+        "GPUは未取得です。",
+      ),
+      memory: disclosedText(
+        environment.memory,
+        disclosure.includeEnvironmentDetails,
+        "環境情報は公開項目として選択されていません。",
+        "メモリは未取得です。",
+      ),
+      executionMode: disclosure.includeEnvironmentDetails
+        ? environment.executionMode
+        : "not disclosed",
+      unavailable: disclosure.includeEnvironmentDetails
         ? [...new Set(missingEnvironment)]
         : [],
     },
     conditions: {
-      id: "pending",
-      settings: record.conditions,
+      id: conditionsId,
+      settings: publicCliConditionSettings(
+        record.conditions,
+        disclosure.includeIdentifiers,
+      ),
     },
     execution: {
       status: execution.status,
@@ -1176,8 +1563,10 @@ function mapCliExperiment(
               status: "not_applicable",
               reason: "実行されていないため完了理由はありません。",
             }
-          : observed(
+          : disclosedText(
               execution.completionReason,
+              disclosure.includeEvidence,
+              "完了理由は公開項目として選択されていません。",
               "完了理由は未取得です。",
             ),
       cost:
@@ -1187,8 +1576,8 @@ function mapCliExperiment(
               reason: "実行されていないためコストは発生していません。",
             }
           : toObservation(execution.cost, "コスト情報は未取得です。"),
-      tests: execution.tests.map((test) => ({
-        name: test.name,
+      tests: execution.tests.map((test, index) => ({
+        name: disclosure.includeEvidence ? test.name : `Test ${index + 1}`,
         status: test.status,
         command: observationForText(
           test.command,
@@ -1212,18 +1601,24 @@ function mapCliExperiment(
               status: "not_applicable",
               reason: "実行されていないため実行時エラーはありません。",
             }
-          : observed(
+          : disclosedText(
               execution.errorCode,
+              disclosure.includeEvidence,
+              "エラーコードは公開項目として選択されていません。",
               "エラーコードは記録されていません。",
             ),
     },
     evaluation: {
-      protocolId: observed(
+      protocolId: disclosedText(
         experiment.evaluationProtocolId,
+        disclosure.includeIdentifiers,
+        "評価規約識別情報は公開項目として選択されていません。",
         "評価規約IDは未取得です。",
       ),
-      protocolVersion: observed(
+      protocolVersion: disclosedText(
         experiment.evaluationProtocolVersion,
+        disclosure.includeIdentifiers,
+        "評価規約識別情報は公開項目として選択されていません。",
         "評価規約バージョンは未取得です。",
       ),
       criteria: publicCriteriaFromCli(record, disclosure),
@@ -1234,7 +1629,9 @@ function mapCliExperiment(
         ? [...record.contamination.limitations]
         : [],
     },
-    publicReferences: [...record.publicReferences],
+    publicReferences: disclosure.includeReferences
+      ? [...record.publicReferences]
+      : [],
   };
 }
 
@@ -1288,8 +1685,8 @@ export function inspectPublicContent(
       label: "email address",
     },
     {
-      pattern: /(?:\b[A-Z]:\\Users\\[^\\\s]+|\/(?:Users|home)\/[^/\s]+)/i,
-      label: "local user path",
+      pattern: /(?:\b[A-Z]:\\[^\s"'<>]+|\/(?:Users|home|private|tmp)\/[^\s"'<>]+)/i,
+      label: "local absolute path",
     },
   ];
   for (const item of getStrings(document)) {
@@ -1301,6 +1698,25 @@ export function inspectPublicContent(
     for (const candidate of personalPatterns) {
       if (candidate.pattern.test(item.value)) {
         warnings.add(`${candidate.label} may be present in ${item.path}`);
+      }
+    }
+    for (const match of item.value.matchAll(/https?:\/\/[^\s"'<>]+/gi)) {
+      try {
+        const url = new URL(match[0]);
+        const queryKeys = [...url.searchParams.keys()];
+        if (
+          url.username ||
+          url.password ||
+          queryKeys.some((key) => SENSITIVE_QUERY_KEY.test(key))
+        ) {
+          blocked.add(`sensitive URL content detected in ${item.path}`);
+        } else if (isNonPublicHostname(url.hostname)) {
+          blocked.add(`internal or non-public URL detected in ${item.path}`);
+        } else {
+          warnings.add(`URL visibility is not independently verified in ${item.path}`);
+        }
+      } catch {
+        warnings.add(`unverified URL may be present in ${item.path}`);
       }
     }
   }
@@ -1374,15 +1790,15 @@ export async function createPublicBenchmarkDocument({
       isRecord(input) && input.sampleRecord === true
         ? "synthetic_sample"
         : "user_recorded";
-    experiments = source.results.map((result) =>
-      mapOllamaExperiment(source, result, inputSha256, disclosure),
+    experiments = await Promise.all(
+      source.results.map((result) =>
+        mapOllamaExperiment(source, result, inputSha256, disclosure),
+      ),
     );
   } else if (isRecord(input) && input.format === CLI_RECORD_FORMAT) {
     validateCliRecord(input);
     dataKind = input.sampleRecord === true ? "synthetic_sample" : "user_recorded";
-    experiments = [
-      mapCliExperiment(input, inputSha256, disclosure),
-    ];
+    experiments = [await mapCliExperiment(input, inputSha256, disclosure)];
   } else {
     throw new PublicBenchmarkError(
       "未対応の入力形式です。Ollama schemaVersion 1またはbenchmark-cli-record/v1を指定してください。",
@@ -1394,21 +1810,6 @@ export async function createPublicBenchmarkDocument({
     dataKind,
     experiments,
   };
-  for (const experiment of document.experiments) {
-    const conditionsFingerprint = JSON.stringify(canonicalize({
-      model: experiment.model,
-      agent: experiment.agent,
-      environment: {
-        os: experiment.environment.os,
-        cpu: experiment.environment.cpu,
-        gpu: experiment.environment.gpu,
-        memory: experiment.environment.memory,
-        executionMode: experiment.environment.executionMode,
-      },
-      conditions: experiment.conditions.settings,
-    }));
-    experiment.conditions.id = await sha256Hex(conditionsFingerprint);
-  }
   validatePublicDocument(document);
   return document;
 }
@@ -1442,7 +1843,7 @@ function isIntegerObservation(value: unknown): boolean {
 function isPublicCriterion(value: unknown): value is PublicEvaluationCriterion {
   return (
     isRecord(value) &&
-    isString(value.id) &&
+    safeIdentifier(value.id) &&
     isString(value.label) &&
     isStringObservation(value.description) &&
     ["automatic", "manual", "unspecified"].includes(
@@ -1477,7 +1878,7 @@ export function validatePublicBenchmarkDocument(
     if (
       !isRecord(experiment) ||
       !isString(experiment.id) ||
-      !/^[A-Za-z0-9][A-Za-z0-9._:%-]{0,255}$/.test(experiment.id) ||
+      !safeIdentifier(experiment.id) ||
       !experiment.id ||
       !isRecord(experiment.source) ||
       !["ollama-benchmark-v1", "cli-manual-v1"].includes(
@@ -1597,6 +1998,29 @@ export function validatePublicBenchmarkDocument(
         `experiments[${index}]の成功判定に完了状態または観測証拠がありません。`,
       );
     }
+    validatePhaseZeroCriteria(
+      isRecord(experiment.evaluation.protocolId) &&
+        experiment.evaluation.protocolId.status === "observed"
+        ? experiment.evaluation.protocolId.value
+        : null,
+      isRecord(experiment.evaluation.protocolVersion) &&
+        experiment.evaluation.protocolVersion.status === "observed"
+        ? experiment.evaluation.protocolVersion.value
+        : null,
+      experiment.evaluation.criteria as Array<{
+        id: string;
+        maxScore: number;
+        scoringMethod: string;
+      }>,
+    );
+    for (const reference of experiment.publicReferences) {
+      validatePublicReference(reference);
+    }
+    for (const criterion of experiment.evaluation.criteria) {
+      for (const reference of criterion.evidenceReferences) {
+        validatePublicReference(reference);
+      }
+    }
     if (
       execution.status === "not_run" &&
       [
@@ -1658,6 +2082,12 @@ export function serializePublicBenchmarkDocument(
   document: PublicBenchmarkDocument,
 ): string {
   validatePublicBenchmarkDocument(document);
+  const inspection = inspectPublicContent(document);
+  if (inspection.blocked.length > 0) {
+    throw new PublicBenchmarkError(
+      `公開データに秘密情報の可能性がある内容を検出しました: ${inspection.blocked.join("; ")}`,
+    );
+  }
   return `${JSON.stringify(document, null, 2)}\n`;
 }
 

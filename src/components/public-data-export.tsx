@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   createIntegrityManifest,
   createPublicBenchmarkDocument,
@@ -15,6 +15,7 @@ import type {
   PublicDisclosureOptions,
   PublicIntegrityManifest,
 } from "@/types/public-benchmark";
+import { LatestSelection } from "@/lib/latest-selection";
 
 const MAX_INPUT_BYTES = 2 * 1024 * 1024;
 
@@ -38,6 +39,7 @@ function downloadJson(fileName: string, content: string) {
 }
 
 export function PublicDataExport() {
+  const latestSelection = useRef(new LatestSelection());
   const [input, setInput] = useState<unknown>(undefined);
   const [inputText, setInputText] = useState("");
   const [fileName, setFileName] = useState("");
@@ -118,8 +120,10 @@ export function PublicDataExport() {
 
   const selectFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.currentTarget.files?.[0];
+    const generation = latestSelection.current.begin();
+    event.currentTarget.value = "";
     setInput(undefined);
-    setProcessing(false);
+    setProcessing(Boolean(file));
     setInputText("");
     setFileName("");
     setInputError("");
@@ -134,24 +138,30 @@ export function PublicDataExport() {
     }
     if (!file.name.toLowerCase().endsWith(".json")) {
       setInputError("JSONファイルを選択してください。");
+      setProcessing(false);
       event.currentTarget.value = "";
       return;
     }
     if (file.size > MAX_INPUT_BYTES) {
       setInputError("入力できるJSONは2 MiB以下です。");
+      setProcessing(false);
       event.currentTarget.value = "";
       return;
     }
     try {
       const text = await file.text();
+      if (!latestSelection.current.isCurrent(generation)) {
+        return;
+      }
       const parsed: unknown = JSON.parse(text);
       setInput(parsed);
       setInputText(text);
       setFileName(file.name);
-      setProcessing(true);
     } catch {
-      setInputError("JSONを読み込めません。構文を確認してください。");
-      event.currentTarget.value = "";
+      if (latestSelection.current.isCurrent(generation)) {
+        setInputError("JSONを読み込めません。構文を確認してください。");
+        setProcessing(false);
+      }
     }
   };
 
@@ -211,7 +221,39 @@ export function PublicDataExport() {
       ) : null}
 
       <fieldset className="publicDisclosure">
-        <legend>公開データへ含める自由記述（初期状態では含めません）</legend>
+        <legend>公開データへ含める項目（初期状態ではすべて非公開）</legend>
+        <label>
+          <input
+            type="checkbox"
+            checked={disclosure.includeIdentifiers}
+            onChange={() => changeDisclosure("includeIdentifiers")}
+          />
+          課題・モデル・エージェント・評価規約・評価項目の識別情報
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={disclosure.includeAgentDetails}
+            onChange={() => changeDisclosure("includeAgentDetails")}
+          />
+          エージェントのツール・権限・人間介入記録
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={disclosure.includeEnvironmentDetails}
+            onChange={() => changeDisclosure("includeEnvironmentDetails")}
+          />
+          OS・CPU・GPU・メモリなどの環境情報
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={disclosure.includeReferences}
+            onChange={() => changeDisclosure("includeReferences")}
+          />
+          公開参照URL・証拠参照URL
+        </label>
         <label>
           <input
             type="checkbox"
@@ -340,7 +382,7 @@ export function PublicDataExport() {
             <button
               type="button"
               className="primaryButton compactButton"
-              disabled={!canDownload}
+              disabled={!canDownload || processing}
               onClick={() =>
                 downloadJson(bundle.fileName, bundle.serializedDocument)
               }
@@ -350,7 +392,7 @@ export function PublicDataExport() {
             <button
               type="button"
               className="secondaryDownloadButton"
-              disabled={!canDownload}
+              disabled={!canDownload || processing}
               onClick={() =>
                 downloadJson(
                   `${bundle.fileName}.manifest.json`,

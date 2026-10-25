@@ -644,6 +644,7 @@ button:disabled {
 
 .publicExportPanel {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
 }
 
@@ -712,6 +713,7 @@ button:disabled {
 
 .publicExportNotice,
 .publicValidation {
+  min-width: 0;
   margin: 0;
 }
 
@@ -721,6 +723,11 @@ button:disabled {
   gap: 6px;
   margin: 8px 0 0;
   padding-left: 22px;
+}
+
+.publicExportNotice li,
+.publicValidation li {
+  overflow-wrap: anywhere;
 }
 
 .publicValidationSuccess {

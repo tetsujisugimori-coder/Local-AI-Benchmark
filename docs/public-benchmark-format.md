@@ -27,7 +27,7 @@ Each experiment contains:
 - `model`: name, ID, version, provider, selection method, and whether the actual model is identified.
 - `agent`: name/version, API/CLI/IDE/cloud/other interface, available tools, permissions, and human intervention.
 - `environment`: OS, CPU, GPU, memory, execution mode, and explicitly unavailable details.
-- `conditions`: a stable identifier and the allowlisted run settings. It does not include credentials or a local Ollama base URL.
+- `conditions`: a stable identifier and the allowlisted run settings. Hidden repository identifiers and base SHAs are omitted from the public settings unless identifiers are selected.
 - `execution`: execution state, task outcome, scoring state and totals, optional response, durations, token counts, speed, cost, tests, completion/error codes, and evaluation limitations.
 - `evaluation`: protocol ID/version and criteria with description, method, maximum score, score, evidence, unobserved items, assessor judgment, and public references.
 - `contamination`: `none_detected`, `present`, or `unknown`, plus limitations. The scanner cannot establish that contamination did not occur.
@@ -43,7 +43,7 @@ Measurements use tagged observations:
 
 Thus a measured zero is not confused with an unavailable value. Execution status (`completed`, `failed`, `aborted`, `not_run`) is separate from task outcome (`success`, `failure`, `indeterminate`, `not_applicable`) and scoring status. A not-run Ollama result has not-applicable measurements; an unscored or failed evaluation is not converted to a successful task outcome.
 
-CLI manual scores retain the Phase 0 eight criteria and 0–4 point scale. Each score is a number, `not_observed`, or `not_applicable`; the two string states are never encoded as zero. The public format has no cross-task aggregate/ranking. Scores from different tasks, task-set versions, or protocols are not directly comparable.
+CLI manual scores retain the Phase 0 eight criteria and 0–4 point scale. The known protocol is identified by the exact pair `cli-agent-evaluation` / `1.0.0`; it requires the eight known criterion IDs and a maximum of 4 points each. Duplicate criterion IDs are rejected for every protocol. Other protocol IDs or versions are extensible and do not inherit the Phase 0 eight-criterion requirement. Each score is a number, `not_observed`, or `not_applicable`; the two string states are never encoded as zero. The public format has no cross-task aggregate/ranking. Scores from different tasks, task-set versions, or protocols are not directly comparable.
 
 ## Ollama v1 mapping
 
@@ -51,10 +51,10 @@ The converter validates the v1 structure, then constructs a new object from spec
 
 | Existing field | Public representation |
 | --- | --- |
-| `benchmarkId`, `problemId`, `problemSetId`, `problemSetVersion`, `problemTitle` | Experiment/task identifiers and versions. Missing freeform problem metadata is `not_observed`. |
+| `benchmarkId`, `problemId`, `problemSetId`, `problemSetVersion`, `problemTitle` | An opaque deterministic experiment ID and task identifiers/versions. Task identifiers and titles default to withheld. |
 | `createdAt`, result `startedAt`, `finishedAt` | Experiment and run time observations, including timezone. |
-| `displayName`, `modelId` | Identified Ollama model name/ID; model version remains not observed. |
-| `environment.platform`, `cpu`, `memory` | Environment observations. Empty strings become `not_observed`; GPU/browser details stay unavailable. |
+| `displayName`, `modelId` | Ollama model name/ID, withheld unless identifiers are selected; model version remains not observed. |
+| `environment.platform`, `cpu`, `memory` | Environment observations, withheld unless environment details are selected. Empty strings become `not_observed`; GPU/browser details stay unavailable. |
 | `request` and per-result settings | Temperature, seed, token/context limits, execution count, run mode, streaming and thinking flags. System prompt and Ollama base URL are omitted. |
 | `executionStatus`, `error.code` | Execution status and error code. Free-text error messages are omitted. |
 | duration/count/rate fields | Observed values or explicit `not_observed`; a not-run result uses `not_applicable`. |
@@ -66,7 +66,7 @@ The existing schema does not record independent test results, contamination, or 
 
 ## Manual CLI JSON record
 
-Download `/cli-record-template.json` from the export panel, fill one record per agent trial, remove the `template` marker, and import it. The accepted root format is `benchmark-cli-record/v1`; this is structured JSON input, not free-text log interpretation. CLI criteria must use `maxScore` 1–4 and a score from 0 through that maximum, `not_observed`, or `not_applicable`. Do not convert N/O or N/A to zero.
+Download `/cli-record-template.json` from the export panel, fill one record per agent trial, remove the `template` marker, and import it. The accepted root format is `benchmark-cli-record/v1`; this is structured JSON input, not free-text log interpretation. CLI criteria must use `maxScore` 1–4 and a score from 0 through that maximum, `not_observed`, or `not_applicable`. Do not convert N/O or N/A to zero. The known Phase 0 rubric is checked by protocol ID and version; unknown future rubrics are accepted without imposing its eight-item list.
 
 `model.selectionMethod` is `manual`, `automatic`, or `unknown`; it is distinct from whether both the actual model name and ID are known.
 
@@ -92,17 +92,17 @@ The first five non-contamination rubric dimensions retain the Phase 0 order; con
 
 ## Manual local export
 
-1. Select an Ollama v1 result or a completed CLI JSON record in the **公開用データを作成** panel. Files are read in the browser and are limited to 2 MiB.
-2. Select only the free-text fields that are intended for disclosure. Prompt, response, evidence, unobserved explanations, limitations, assessor judgment, and test commands default to excluded.
-3. Review the validation result and open the JSON preview. A high-confidence credential/private-key match blocks output. A possible email or local-user path requires a separate warning acknowledgement.
-4. Inspect every field in the preview. The scanner is heuristic and cannot identify all secrets, personal information, private repository content, or unreleased task material.
+1. Select an Ollama v1 result or a completed CLI JSON record in the **公開用データを作成** panel. Files are read in the browser and are limited to 2 MiB. If reads overlap, only the latest file selection is applied.
+2. All disclosure choices default to off. Identifiers (task/model/agent/protocol/criterion), agent tools/permissions/intervention notes, environment details, public/evidence URLs, prompt, response, evaluation evidence and explanations, assessor judgment, and test commands require separate explicit selection. Unselected values are not copied; stable placeholders or empty reference arrays are emitted where required by the v1 shape.
+3. Review the validation result and open the JSON preview. Credential/private-key matches, URL credentials, sensitive URL query names, and internal/local references block output, including private IPv4/IPv6 URLs inside selected text. Non-global IPv6 literals are conservatively rejected; URL ownership/publication status and DNS resolution are not checked. URLs and possible personal/local-path indicators require human review and warning acknowledgement.
+4. Inspect every field in the preview. The scanner is heuristic and cannot identify all secrets, personal information, private repository content, or unreleased task material. It cannot determine URL ownership, publication status, or whether a task or repository is private.
 5. Check the explicit human approval and, when applicable, warning acknowledgement. Only then can the public JSON and its separate SHA-256 manifest be downloaded.
 
 Download generation does not upload, publish, push, or save automatically. The application does not store the selected data. Human review is required even if automated scanning reports no warning.
 
 ## Integrity and reproducibility
 
-`source.inputSha256` identifies the exact source JSON text. `conditions.id` is SHA-256 over the normalized model, agent, environment and condition settings. The separate `benchmark-public-manifest/v1` file hashes the exact UTF-8 bytes of the downloaded, formatted public JSON, including its final newline. The manifest is not embedded in that JSON.
+`source.inputSha256` identifies the exact source JSON text. `conditions.id` is SHA-256 over canonicalized, allowlisted pre-run model identity, agent identity/interface/tools, known environment fields, and run settings. It excludes task results, human-intervention records, evidence, assessment comments, disclosure choices, and unrecognized environment text. Object key order is normalized; only bounded, identifier-like strings are included in the fingerprint. Conditions IDs are stable across disclosure changes but are not proof of experimental equivalence or measurement accuracy. Experiment IDs are opaque SHA-256-derived identifiers from the source experiment identity; Ollama benchmark IDs containing timezone offsets are accepted without copying their punctuation into the public ID. The separate `benchmark-public-manifest/v1` file hashes the exact UTF-8 bytes of the downloaded, formatted public JSON, including its final newline. The manifest is not embedded in that JSON.
 
 Use `verifyIntegrityManifest` with the manifest JSON and exact downloaded JSON text to check byte identity; malformed manifests are rejected. This check does not establish how the data was measured or whether it is accurate.
 
@@ -110,7 +110,7 @@ SHA-256 can detect that bytes differ from the manifest's file. It does not prove
 
 ## Security boundary and known limitations
 
-Only fields explicitly constructed by the converter enter the output. System prompts, chain-of-thought/thinking, local base URLs, arbitrary extra properties, raw logs, and free-text error messages are omitted. Selected text is checked for known credential/private-key patterns and email/local-user-path indicators. High-confidence credential matches block preview/export; PII-like warnings require acknowledgement.
+Only fields explicitly constructed by the converter enter the output. System prompts, chain-of-thought/thinking, local base URLs, arbitrary extra properties, raw logs, and free-text error messages are omitted. Identifiers and other structured details are withheld by default; every free-text category and reference URL also defaults to withheld. Selected output is checked for known credential/private-key patterns, URL credentials and sensitive query parameter names, and email/local absolute path indicators. High-confidence credential matches block serialization/export; URL and PII-like warnings require acknowledgement in the UI.
 
 Detection is not a security boundary and can have both false negatives and false positives. It cannot determine whether a repository or task is private, or whether a person's name is sensitive. Review the full preview and source manually; never place secrets in an exported record. Malformed data or unsupported schemas fail closed. Do not compare scores across different task sets or evaluation protocol versions as if they shared one scale.
 

@@ -378,3 +378,43 @@
 - 専用ブランチ`feature/public-benchmark-export`をpushし、[#8](https://github.com/tetsujisugimori-coder/Local-AI-Benchmark/pull/8)をbase `main`のDraft PRとして作成した。
 - 実装コミット`551419755929f52a1c5190173dd2dc4520e41bf7`を含む最終PR HEADについて`gh pr checks 8`を実行したが、`no checks reported`（終了コード1）。GitHub CIは未実行・未確認。
 - PR #6はMergedのまま変更していない。PR #8はDraft / OPENで、merge、auto-merge、本番公開は行っていない。
+
+## 2026-10-25 — Draft PR #8 独立レビュー指摘修正
+
+### 作業開始時の状態
+
+- `git fetch origin`後、作業ブランチと`origin/feature/public-benchmark-export`は`ad68632f3b704146b510f346f131e007fed493a5`で一致。`origin/main`は`7b09f02bc5e877b82d6699b62d5fdec64e356355`。作業ツリーは開始時cleanで、競合・先行リモート更新なし。
+- 既存Draft PR #8を更新する対象として確認。main、Issue #7、PR #6、Ollama実行・既存採点・Memo-Nexus出力は変更しない。
+
+### 修正内容と再現確認
+
+- 公開射影を識別子、エージェント詳細、環境情報、参照URL、自由記述の明示選択で制御。未選択のCLI評価項目IDは`criterion-N`へ置き換え、Ollama/CLIの評価規約ID・版も既定で隠す。証拠参照URL、権限説明、人間介入、公開参照も選択されない限り複製しない。ライブラリの直接呼出しとシリアライズでも確認した。
+- URL資格情報・機密クエリ・非公開IPv4/IPv6・ローカル/内部ホストを検査。選択済み文章中の内部IP URLもシリアライズをブロックする。通常URLや個人情報候補は警告にとどめ、UIで人間の警告承認とプレビュー承認の両方を要求する。DNS解決やURLの公開状態は検査できない。
+- 既存Ollama seedの有限な負値を維持し、benchmark IDの日時・オフセットを含む実験IDはSHA-256由来の安全な形式に変換。通常、Phase 2、UTC、`+09:00`形式、重複IDを回帰検証した。
+- CLI規約は`cli-agent-evaluation@1.0.0`の組み合わせで既知8項目と各4点上限を検証。全規約で評価項目ID重複を拒否し、未知規約へ既知8項目を強制しない。0点、N/O、N/A、`not_run`の区別を保持する。
+- `conditions.id`を実験前のモデル・エージェント・環境・条件設定から正規化して算出。キー順、開示選択、評価証拠・判断、介入記録に依存せず、実行設定変更で変わることを確認。公開サンプルは新しい決定的IDで再生成し、`synthetic_sample`を維持した。
+- 非同期ファイル読込に世代管理を追加し、古い成功・失敗結果を無視。新規入力や公開選択の変更でプレビュー承認を解除し、検証中はダウンロード不可とした。
+- 独立レビューでは追加で「未選択の評価項目/規約IDの漏えい」と「文章中のprivate IPv4 URLが警告のみ」の2点を指摘。上記の公開射影・スキャナー変更と回帰テストで修正した。
+- Edge実機操作で警告表示時に375px幅の横溢れを再現し、公開パネルの最小トラック幅と警告文の折返しを修正。最終確認では375pxと390pxの両方でviewport幅とscroll幅が一致した。
+
+### 変更ファイル
+
+- `src/lib/public-benchmark.ts`、`src/lib/latest-selection.ts`、`src/types/public-benchmark.ts`
+- `src/components/public-data-export.tsx`、`src/app/globals.css`
+- `tests/public-benchmark.test.ts`（既存12件から18件へ6件追加）
+- `examples/sample-public-benchmark.json`、`docs/public-benchmark-format.md`、`README.md`、`LOG.md`
+
+### 検証結果
+
+- 修正前の再現では、公開ベンチマークの集中テスト17件中14件成功・3件失敗。未選択の内部情報漏えい、CLI規約検証不足、事後介入による条件ID変化を確認した。seed/日時のテストは当初変換だけだったため、後に公開形式検証・シリアライズ・重複IDまで検証する回帰ケースに強化した。
+- 最終`npm run check`: 成功。TypeScript、ESLint、全43テスト成功（失敗0）。
+- 最終`npm run build`: 成功。Next.js production build、型処理、静的ページ生成を完了。
+- `git diff --check`: exit 0。生成サンプルに対するGitのLF→CRLF変換注意のみで、空白エラーなし。
+- Edge 156 production UI: 375px/390px、JSON取込、ファイルAの読込遅延中にファイルBを選択して最新Bを採用、開示選択変更による承認解除、email警告と警告承認ゲート、キーボードSpaceによる操作、公開JSONとmanifestのローカルダウンロードを確認。警告状態の最終レイアウトも375px/390pxで横溢れなし。合成入力を使用。
+- SHA-256 manifest照合と改変検出、`synthetic_sample`維持、既存Ollama schemaVersion 1/Memo-Nexus関連を含む全テストを確認。
+- WebKitは実行環境がなく未検証。GitHub Actions workflowがないためCIは未確認（`no checks reported`は成功扱いしない）。
+
+### 残存制約
+
+- URL/秘密情報検出は完全ではなく、DNS解決、URL所有者・公開状態、課題やリポジトリの秘密性は判断できない。出力前の原文・プレビューの人間確認を必須とする。
+- CLIエージェントの実行、外部送信・公開、WebKit検証、GitHub CIは実施していない。

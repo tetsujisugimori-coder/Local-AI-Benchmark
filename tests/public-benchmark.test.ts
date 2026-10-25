@@ -12,6 +12,7 @@ import {
   verifyIntegrityManifest,
   validatePublicBenchmarkDocument,
 } from "../src/lib/public-benchmark.ts";
+import { LatestSelection } from "../src/lib/latest-selection.ts";
 import type {
   BenchmarkResult,
   BenchmarkSettings,
@@ -109,7 +110,7 @@ test("schemaVersion 1のOllama結果をallowlistで変換し未観測を保持�
   assert.equal(experiment.execution.response.status, "not_observed");
   assert.equal(experiment.agent.tools.status, "not_applicable");
   assert.equal(experiment.contamination.status, "unknown");
-  assert.ok(experiment.environment.unavailable.length > 0);
+  assert.equal(experiment.environment.unavailable.length, 0);
   assert.equal(experiment.source.inputSha256.length, 64);
   assert.equal(experiment.conditions.id.length, 64);
   assert.equal(serialized.includes("systemPrompt"), false);
@@ -126,6 +127,7 @@ test("明示選択したプロンプトと回答だけを公開射影へ含め�
     input,
     inputText: text,
     disclosure: disclosure({
+      includeEvidence: true,
       includeTaskPrompt: true,
       includeResponses: true,
     }),
@@ -262,6 +264,14 @@ test("Phase 2の評価基準とゼロ点・手動未採点を分離して変換�
   const document = await createPublicBenchmarkDocument({
     input,
     inputText: JSON.stringify(input),
+    disclosure: disclosure({
+      includeIdentifiers: true,
+      includeEvidence: true,
+    }),
+  });
+  const hiddenIdentifiers = await createPublicBenchmarkDocument({
+    input,
+    inputText: JSON.stringify(input),
   });
 
   assert.equal(document.experiments[0].task.setId.status, "observed");
@@ -270,6 +280,15 @@ test("Phase 2の評価基準とゼロ点・手動未採点を分離して変換�
   assert.equal(document.experiments[0].evaluation.criteria[0].score, 0);
   assert.equal(document.experiments[0].evaluation.criteria[1].score, "not_observed");
   assert.equal(document.experiments[0].execution.taskOutcome, "indeterminate");
+  assert.equal(hiddenIdentifiers.experiments[0].task.setId.status, "not_observed");
+  assert.equal(
+    hiddenIdentifiers.experiments[0].evaluation.protocolId.status,
+    "not_observed",
+  );
+  assert.equal(
+    hiddenIdentifiers.experiments[0].evaluation.criteria[0].id,
+    "criterion-1",
+  );
 });
 
 test("CLI JSON記録は8項目・N/O・汚染制約を維持し合成データを識別する", async () => {
@@ -278,6 +297,9 @@ test("CLI JSON記録は8項目・N/O・汚染制約を維持し合成データ�
     input,
     inputText: text,
     disclosure: disclosure({
+      includeIdentifiers: true,
+      includeAgentDetails: true,
+      includeEnvironmentDetails: true,
       includeTaskPrompt: true,
       includeResponses: true,
       includeEvidence: true,
@@ -303,6 +325,185 @@ test("CLI JSON記録は8項目・N/O・汚染制約を維持し合成データ�
   assert.equal(experiment.execution.inputTokens.status, "not_observed");
   assert.equal(experiment.execution.cost.status, "not_observed");
   validatePublicBenchmarkDocument(document);
+});
+
+test("未選択のCLI参照・権限・介入情報は直接変換でも公開射影されない", async () => {
+  const { input } = await readSampleCli();
+  const record = structuredClone(input) as CliManualRecord;
+  record.agent.permissions = "PRIVATE permission note";
+  record.agent.humanIntervention = "PRIVATE operator name";
+  record.publicReferences = ["https://example.org/report"];
+  record.evaluation.criteria[0].evidenceReferences = [
+    "https://example.org/case/private",
+  ];
+
+  const document = await createPublicBenchmarkDocument({
+    input: record,
+    inputText: JSON.stringify(record),
+  });
+  const serialized = JSON.stringify(document);
+  assert.doesNotMatch(serialized, /PRIVATE permission note|PRIVATE operator name/);
+  assert.doesNotMatch(serialized, /example\.org|private-token/);
+  assert.doesNotMatch(serialized, /reproduction|cli-agent-evaluation/);
+  assert.equal(document.experiments[0].evaluation.criteria[0].id, "criterion-1");
+  assert.equal(document.experiments[0].agent.permissions.status, "not_observed");
+  assert.equal(document.experiments[0].agent.humanIntervention.status, "not_observed");
+
+  const selected = await createPublicBenchmarkDocument({
+    input: record,
+    inputText: JSON.stringify(record),
+    disclosure: disclosure({
+      includeAgentDetails: true,
+      includeReferences: true,
+    }),
+  });
+  assert.equal(
+    selected.experiments[0].agent.permissions.status,
+    "observed",
+  );
+  assert.equal(
+    selected.experiments[0].evaluation.criteria[0].evidenceReferences[0],
+    "https://example.org/case/private",
+  );
+  assert.deepEqual(selected.experiments[0].publicReferences, [
+    "https://example.org/report",
+  ]);
+
+  record.publicReferences = [
+    "https://" + "user" + ":" + "pass" + "@example.org/report",
+  ];
+  await assert.rejects(
+    createPublicBenchmarkDocument({
+      input: record,
+      inputText: JSON.stringify(record),
+    }),
+    /認証情報/,
+  );
+  record.publicReferences = ["https://example.org/report?api_key=private"];
+  await assert.rejects(
+    createPublicBenchmarkDocument({
+      input: record,
+      inputText: JSON.stringify(record),
+    }),
+    /機密クエリ/,
+  );
+  for (const internalReference of [
+    "http://127.0.0.1/private",
+    "http://[::ffff:192.168.1.1]/private",
+    "https://repo.home.arpa/task",
+  ]) {
+    record.publicReferences = [internalReference];
+    await assert.rejects(
+      createPublicBenchmarkDocument({
+        input: record,
+        inputText: JSON.stringify(record),
+      }),
+      /内部・ローカルリンク/,
+    );
+  }
+});
+
+test("回帰: 有効な負のOllama seedを公開形式へ変換できる", async () => {
+  const input = ollamaDocument([sampleResult({ settings: { ...settings, seed: -1 } })]);
+  const publicDocument = await createPublicBenchmarkDocument({
+      input,
+      inputText: JSON.stringify(input),
+    });
+  assert.equal(publicDocument.experiments[0].conditions.settings.seed, -1);
+  validatePublicBenchmarkDocument(publicDocument);
+  assert.doesNotThrow(() =>
+    serializePublicBenchmarkDocument(publicDocument),
+  );
+});
+
+test("回帰: 通常・Phase 2・UTC・オフセット付きbenchmark IDを安全に変換する", async () => {
+  for (const benchmarkId of [
+    "benchmark-2026-10-25",
+    "2026-10-25T09-00-00",
+    "2026-10-25T00:00:00.000Z",
+    "2026-10-25T09:00:00.000+09:00",
+  ]) {
+    const source = ollamaDocument([sampleResult()]);
+    source.benchmarkId = benchmarkId;
+    const document = await createPublicBenchmarkDocument({
+      input: source,
+      inputText: JSON.stringify(source),
+    });
+    assert.match(document.experiments[0].id, /^exp-[a-f0-9]{64}$/);
+    validatePublicBenchmarkDocument(document);
+    assert.doesNotThrow(() => serializePublicBenchmarkDocument(document));
+  }
+  const duplicateRuns = ollamaDocument([
+    sampleResult(),
+    sampleResult(),
+  ]);
+  await assert.rejects(
+    createPublicBenchmarkDocument({
+      input: duplicateRuns,
+      inputText: JSON.stringify(duplicateRuns),
+    }),
+    /実験IDが空または重複/,
+  );
+});
+
+test("回帰: 既知CLI規約の欠落項目と重複IDを拒否する", async () => {
+  const { input } = await readSampleCli();
+  const missing = structuredClone(input) as CliManualRecord;
+  missing.evaluation.criteria.pop();
+  await assert.rejects(
+    createPublicBenchmarkDocument({
+      input: missing,
+      inputText: JSON.stringify(missing),
+    }),
+    /criterion|評価項目/,
+  );
+  const duplicate = structuredClone(input) as CliManualRecord;
+  duplicate.evaluation.criteria[1].id = duplicate.evaluation.criteria[0].id;
+  await assert.rejects(
+    createPublicBenchmarkDocument({
+      input: duplicate,
+      inputText: JSON.stringify(duplicate),
+    }),
+    /duplicate|重複/,
+  );
+
+  const futureProtocol = structuredClone(input) as CliManualRecord;
+  futureProtocol.experiment.evaluationProtocolId = "future-rubric";
+  futureProtocol.experiment.evaluationProtocolVersion = "2.0";
+  futureProtocol.evaluation.criteria.splice(1);
+  assert.doesNotReject(
+    createPublicBenchmarkDocument({
+      input: futureProtocol,
+      inputText: JSON.stringify(futureProtocol),
+    }),
+  );
+});
+
+test("回帰: 実行後の記録はconditions.idに影響しない", async () => {
+  const { input, text } = await readSampleCli();
+  const changed = structuredClone(input) as CliManualRecord;
+  changed.agent.humanIntervention = "Different post-run intervention note";
+  changed.evaluation.criteria[0].assessorJudgment =
+    "Changed after-run assessor note";
+  changed.evaluation.criteria[0].evidence.push("Changed evidence after the trial");
+  const original = await createPublicBenchmarkDocument({ input, inputText: text });
+  const afterRun = await createPublicBenchmarkDocument({
+    input: changed,
+    inputText: JSON.stringify(changed),
+  });
+  assert.equal(
+    original.experiments[0].conditions.id,
+    afterRun.experiments[0].conditions.id,
+  );
+  const selected = await createPublicBenchmarkDocument({
+    input,
+    inputText: text,
+    disclosure: disclosure({ includeIdentifiers: true }),
+  });
+  assert.equal(
+    original.experiments[0].conditions.id,
+    selected.experiments[0].conditions.id,
+  );
 });
 
 test("未知形式、不正状態、範囲外点、未実行成功を拒否する", async () => {
@@ -476,6 +677,26 @@ test("高確度の秘密パターンをブロックしPII候補は警告する",
   const emailInspection = inspectPublicContent(emailDocument);
   assert.equal(emailInspection.blocked.length, 0);
   assert.ok(emailInspection.warnings.some((entry) => entry.includes("email")));
+  assert.throws(
+    () => serializePublicBenchmarkDocument(document),
+    /秘密情報の可能性/,
+  );
+
+  input.execution.response = "See internal console at http://192.168.1.20/admin.";
+  const privateHostDocument = await createPublicBenchmarkDocument({
+    input,
+    inputText: JSON.stringify(input),
+    disclosure: disclosure({ includeResponses: true }),
+  });
+  assert.ok(
+    inspectPublicContent(privateHostDocument).blocked.some((entry) =>
+      entry.includes("internal or non-public URL"),
+    ),
+  );
+  assert.throws(
+    () => serializePublicBenchmarkDocument(privateHostDocument),
+    /秘密情報の可能性/,
+  );
 });
 
 test("未知の元フィールドは公開射影へ複製しない", async () => {
@@ -561,6 +782,43 @@ test("条件設定キー順が異なっても条件IDは一致する", async () 
     first.experiments[0].conditions.id,
     disclosed.experiments[0].conditions.id,
   );
+
+  const changedSetting = {
+    ...record,
+    conditions: { ...record.conditions, temperature: 0.75 },
+  };
+  const changed = await createPublicBenchmarkDocument({
+    input: changedSetting,
+    inputText: JSON.stringify(changedSetting),
+  });
+  assert.notEqual(
+    first.experiments[0].conditions.id,
+    changed.experiments[0].conditions.id,
+  );
+});
+
+test("最新ファイル選択の世代だけが非同期完了後も有効になる", async () => {
+  const selection = new LatestSelection();
+  let resolveFirst: ((value: string) => void) | undefined;
+  let resolveSecond: ((value: string) => void) | undefined;
+  const first = new Promise<string>((resolve) => {
+    resolveFirst = resolve;
+  });
+  const second = new Promise<string>((resolve) => {
+    resolveSecond = resolve;
+  });
+  const firstGeneration = selection.begin();
+  const secondGeneration = selection.begin();
+  resolveSecond?.("file B");
+  const secondResult = await second;
+  resolveFirst?.("file A");
+  const firstResult = await first;
+
+  const accepted = [
+    { generation: firstGeneration, result: firstResult },
+    { generation: secondGeneration, result: secondResult },
+  ].filter(({ generation }) => selection.isCurrent(generation));
+  assert.deepEqual(accepted.map(({ result }) => result), ["file B"]);
 });
 
 test("公開形式の不正な状態・点数・メタデータを検証で拒否する", async () => {

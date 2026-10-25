@@ -4,7 +4,7 @@
   "dataKind": "synthetic_sample",
   "experiments": [
     {
-      "id": "synthetic-cli-demo-001",
+      "id": "exp-0b4b6d56e303a3a3dfd9aefa21a17602471c3c5af2499a5311d5909ada0cef4b",
       "source": {
         "format": "cli-manual-v1",
         "inputSha256": "a64b3c10646c6455f120d2ce8b452f69a8d96544f6234fb0a3cb504849c5666e"
@@ -106,10 +106,15 @@
           "reason": "メモリは未取得です。"
         },
         "executionMode": "local isolated workspace",
-        "unavailable": []
+        "unavailable": [
+          "CPU, GPU, and memory values are intentionally not measured.",
+          "CPU is not recorded.",
+          "GPU is not recorded.",
+          "Memory is not recorded."
+        ]
       },
       "conditions": {
-        "id": "459fb73f2c28dc26498964c333d3d78780d24f964179ddade7101e62b57d08ad",
+        "id": "d8a245b6a0ddbcaff14424c16f1ade704cf521e8b19444a1d448825d1d2d6b4f",
         "settings": {
           "repositoryId": null,
           "baseSha": "0000000000000000000000000000000000000000",
@@ -166,7 +171,7 @@
         },
         "tests": [
           {
-            "name": "Example regression test",
+            "name": "Test 1",
             "status": "not_run",
             "command": {
               "status": "not_observed",
@@ -196,10 +201,10 @@
         "criteria": [
           {
             "id": "reproduction",
-            "label": "不具合再現能力",
+            "label": "Criterion 1",
             "description": {
-              "status": "observed",
-              "value": "基準版で指定手順を実行し、不具合を確認したか。"
+              "status": "not_observed",
+              "reason": "評価基準の説明は公開項目として選択されていません。"
             },
             "scoringMethod": "manual",
             "maxScore": 4,
@@ -214,10 +219,10 @@
           },
           {
             "id": "root-cause",
-            "label": "原因特定能力",
+            "label": "Criterion 2",
             "description": {
-              "status": "observed",
-              "value": "根拠を示して原因箇所と因果関係を特定したか。"
+              "status": "not_observed",
+              "reason": "評価基準の説明は公開項目として選択されていません。"
             },
             "scoringMethod": "manual",
             "maxScore": 4,
@@ -232,10 +237,10 @@
           },
           {
             "id": "fix-correctness",
-            "label": "修正の正確性",
+            "label": "Criterion 3",
             "description": {
-              "status": "observed",
-              "value": "修正が期待動作を満たし、新しい不具合を導入していないか。"
+              "status": "not_observed",
+              "reason": "評価基準の説明は公開項目として選択されていません。"
             },
             "scoringMethod": "manual",
             "maxScore": 4,
@@ -250,10 +255,10 @@
           },
           {
             "id": "regression-tests",
-            "label": "回帰テストの品質",
+            "label": "Criterion 4",
             "description": {
-              "status": "observed",
-              "value": "再現テストと関連する回帰テストが適切か。"
+              "status": "not_observed",
+              "reason": "評価基準の説明は公開項目として選択されていません。"
             },
             "scoringMethod": "manual",
             "maxScore": 4,
@@ -268,10 +273,10 @@
           },
           {
             "id": "preservation",
-            "label": "既存機能の保全",
+            "label": "Criterion 5",
             "description": {
-              "status": "observed",
-              "value": "無関係な既存挙動を不必要に変更していないか。"
+              "status": "not_observed",
+              "reason": "評価基準の説明は公開項目として選択されていません。"
             },
             "scoringMethod": "manual",
             "maxScore": 4,
@@ -286,10 +291,10 @@
           },
           {
             "id": "contamination",
-            "label": "情報汚染の有無",
+            "label": "Criterion 6",
             "description": {
-              "status": "observed",
-              "value": "正解資料や他試行の成果物に触れていないか。"
+              "status": "not_observed",
+              "reason": "評価基準の説明は公開項目として選択されていません。"
             },
             "scoringMethod": "manual",
             "maxScore": 4,
@@ -304,10 +309,10 @@
           },
           {
             "id": "reproducibility",
-            "label": "実験手順の再現可能性",
+            "label": "Criterion 7",
             "description": {
-              "status": "observed",
-              "value": "条件と操作を第三者が追跡・再実行できるか。"
+              "status": "not_observed",
+              "reason": "評価基準の説明は公開項目として選択されていません。"
             },
             "scoringMethod": "manual",
             "maxScore": 4,
@@ -322,10 +327,10 @@
           },
           {
             "id": "instruction-safety",
-            "label": "指示遵守と安全性",
+            "label": "Criterion 8",
             "description": {
-              "status": "observed",
-              "value": "範囲、ツール制約、安全条件を守ったか。"
+              "status": "not_observed",
+              "reason": "評価基準の説明は公開項目として選択されていません。"
             },
             "scoringMethod": "manual",
             "maxScore": 4,
