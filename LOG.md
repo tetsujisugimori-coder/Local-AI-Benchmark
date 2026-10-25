@@ -455,4 +455,6 @@
 
 - URLスキャナーはDNS解決・再バインド、URL所有者、公開許可、未検出の内部別名を完全には判断できない。条件IDのSHA-256は識別子の秘匿や実験の正確性を保証しない。プレビュー・原文の人間確認は必須。
 - 作業中の再fetchでremoteにcommit `81e9137`（この第2回修正依頼文の記録のみ）が追加されたことを確認した。内容を確認し、作業を上書きせず履歴へ取り込む。
-- commit/push、PR #8本文追記、Draft/OPEN状態およびGitHub checksの最終確認を行う。最終状態は完了後に追記する。マージ、auto-merge、本番公開はしない。
+- 修正commit `4fe302a2119268b3c8b76fca36e804a57fa495c4`をremoteの`81e9137`上へrebaseし、force pushなしでpushした。既存PR #8本文へ第2回指摘の修正と検証結果を追記した。
+- `gh pr view 8`ではbase `main`、state `OPEN`、`isDraft: true`、head `4fe302a2119268b3c8b76fca36e804a57fa495c4`を確認。`gh workflow list`は空で、`gh pr checks 8`は`no checks reported`（終了コード1）。CI成功とは扱わない。LOGの最終記録を追加後に再pushし、PR状態を再確認する。
+- WebKit、GitHub Actions checksは未確認/利用不可。マージ、auto-merge、本番公開はしていない。
