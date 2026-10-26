@@ -180,9 +180,25 @@ async function registerWithCatalogLock({
     catalogTempCreated = false;
     return persisted.document.dataKind;
   } catch (error) {
-    if (catalogTempCreated) await io.rm(catalogTemp, { force: true });
-    if (manifestCreated) await io.rm(manifestTarget, { force: true });
-    if (jsonCreated) await io.rm(jsonTarget, { force: true });
+    const rollbackErrors: unknown[] = [];
+    for (const [created, filePath] of [
+      [catalogTempCreated, catalogTemp],
+      [manifestCreated, manifestTarget],
+      [jsonCreated, jsonTarget],
+    ] as const) {
+      if (!created) continue;
+      try {
+        await io.rm(filePath, { force: true });
+      } catch (rollbackError) {
+        rollbackErrors.push(rollbackError);
+      }
+    }
+    if (rollbackErrors.length > 0) {
+      throw new AggregateError(
+        [error, ...rollbackErrors],
+        "Registration failed and rollback failed; manual recovery is required.",
+      );
+    }
     throw error;
   }
 }
@@ -193,16 +209,28 @@ async function writeExclusiveBytes(
   bytes: Uint8Array,
 ): Promise<boolean> {
   const handle = await io.open(destination, "wx");
+  const errors: unknown[] = [];
   try {
     await handle.writeFile(bytes);
   } catch (error) {
-    try {
-      await handle.close();
-    } finally {
-      await io.rm(destination, { force: true });
-    }
-    throw error;
+    errors.push(error);
   }
-  await handle.close();
+  try {
+    await handle.close();
+  } catch (error) {
+    errors.push(error);
+  }
+  if (errors.length > 0) {
+    try {
+      await io.rm(destination, { force: true });
+    } catch (rollbackError) {
+      throw new AggregateError(
+        [...errors, rollbackError],
+        "File write/close failed and rollback failed; manual recovery is required.",
+      );
+    }
+    if (errors.length === 1) throw errors[0];
+    throw new AggregateError(errors, "File write and close failed.");
+  }
   return true;
 }

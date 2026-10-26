@@ -27,16 +27,27 @@ authenticity, measurement accuracy, independent review, or safe publication.
 Catalog changes require human review. The UI labels user-recorded data as
 unverified and marks synthetic samples separately.
 
-Comparison classification uses only fields disclosed in each record. It does
-not require `conditions.id` equality: that fingerprint includes model identity
-and is not a model-independent match criterion. Different task IDs/versions,
-prompt text, tool lists, permissions, human-intervention conditions, rubric
-IDs/versions, agent interfaces, criterion IDs/labels/descriptions/scoring
-methods/maximum scores, or known settings and hardware are reported as
-condition differences. Tool lists are compared as unordered sets of disclosed
-names. Withheld criterion descriptions and other missing values remain unknown
-and cannot establish equivalence. Agent/model display names alone do not block
-comparison. Scores are not aggregated across different tasks or rubrics;
+Comparison classification uses only fields disclosed in each record. Known
+values are compared even when another record withholds the same condition: a
+known mismatch remains a difference, while missing values are also reported as
+unknown. Any known condition difference takes precedence over unknowns and
+makes direct comparison unavailable. If all disclosed values agree but some
+conditions are unknown, the result is reference-only.
+
+The comparison does not require `conditions.id` equality: that fingerprint
+includes model identity and is not a model-independent match criterion.
+Different task IDs/versions, prompt text, tool lists, permissions,
+human-intervention conditions, rubric IDs/versions, agent interfaces,
+criterion IDs/labels/descriptions/scoring methods/maximum scores, or known
+settings and hardware are reported as condition differences. Tool lists are
+compared as unordered sets of disclosed names. Withheld criterion descriptions
+and other missing values remain unknown and cannot establish equivalence.
+Agent/model display names alone do not block comparison. Synthetic samples are
+never considered directly comparable performance results: synthetic-only
+selections are reference comparisons, and a selection mixing synthetic and
+user-recorded data is not directly comparable. User-recorded records still
+follow the ordinary condition checks and are not independently verified
+measurements. Scores are not aggregated across different tasks or rubrics;
 unobserved measurements are not plotted as zero.
 
 Metric charts are separated by `dataKind`. Synthetic values are labeled as

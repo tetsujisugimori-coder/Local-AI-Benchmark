@@ -552,6 +552,30 @@
 - `viewer/out`の許可リストはNext.js生成規則を意図的に固定している。Next.js更新時は生成出力を確認してからallowlistを更新する必要がある。
 - WebKitおよびGitHub CIの最終結果は未確認。Draft PR #11は人間レビュー待ちで維持し、merge・auto-merge・本番公開は行わない。
 
+## 2026-10-26 — Draft PR #11 追加レビュー指摘修正
+
+### 作業前確認・修正前再現
+
+- 作業開始時のブランチは`feature/public-benchmark-viewer`、作業ツリーはclean。ローカル・origin PR branch HEADはレビュー対象`1b803cae25304aec22626c72f41f342fd1abca86`で一致し、PR #11はOPEN/Draft、既存CI run `40237061931`は成功。mainへの変更や新規PRは行わない。
+- 修正前の比較テストを追加して実行。12件中8件失敗した。既知のprompt不一致と未公開値が同時にある場合に差異が消える問題、複数条件で差異とunknownが両方存在する場合の誤分類、合成/利用者記録のdataKindを比較関数が受け取らない問題を再現した。全既知一致・部分未観測のみのケースは既存動作どおりだった。
+- 登録処理へclose失敗を注入するテストを追加。修正前はJSON、manifest、catalog一時ファイルのclose失敗後に作成ファイルが残り、削除失敗も元のcloseエラーだけが返ってrollback失敗を示さないことを再現した。writeFile失敗系、排他衝突、正常登録は既存/追加テストで状態を確認する。
+
+### 修正内容
+
+- `compareObserved()`で既知値同士の不一致判定と、未観測値の検出を独立させた。既知不一致はunknownと同時に保持され、判定は直接比較不可を優先する。既知値が一致してunknownがある場合は参考比較、全件既知一致なら従来どおり直接比較可能。
+- 比較入力に各recordの`dataKind`を渡すようビューアと比較関数を更新。従来のexperiment配列呼出しもuser_recorded扱いで後方互換維持。synthetic_sample同士は例示の参考比較、合成・利用者記録の混在は直接比較不可。課題/規約等の既知差やunknownはdataKind制約と併せて保持する。利用者記録の独立検証済み表現は追加していない。
+- 登録ファイルのwrite/closeを両方確認し、いずれかが失敗すれば排他的に作成したファイルの削除を試行する。close失敗時もrollbackへ進む。削除も失敗した場合は`AggregateError`で元の失敗とrollback失敗を呼出し元に明示する。catalog lock、保存後manifest照合、元bytes使用、既存ファイル非上書きを維持する。
+
+### 回帰と検証
+
+- 修正前の新規比較・障害注入テスト: 最初の12件中4件成功・8件失敗（RED）。独立レビューで追加発見された設定・CPU・実行方式の混在ケースも、最小テストで修正前に参考比較へ誤分類されることを再現（RED）。全比較ケースは修正後GREEN、登録故障注入8ケースもGREEN。
+- 設定・ハードウェア・実行方式についても、既知値の不一致判定とunknown検出を独立させた。各フィールドで既知の差と未観測を同時に表示し、直接比較不可を優先する回帰テストを追加。
+- 最終`npm run check`: root/viewer typecheck、ESLint、88/88テスト成功（追加13テスト、失敗0、skip 0）。
+- `npm run build`、`npm run viewer:build`、`npm run viewer:validate`、`git diff --check`はすべて成功。静的成果物はcatalog 1件・experiment 1件、31ファイルを検証した。
+- Edge 156実ブラウザでproduction静的成果物をローカルNode HTTP server経由で確認。375px/390pxではdocument幅がviewport幅と一致、1280pxでは1265pxで横幅超過なし。検証用の一時JSON/manifestを使い、Spaceキーで選択した複数記録で既知の実行設定・CPU・実行方式の差と未観測条件を同時表示し、「直接比較不可」となることを確認。テスト用データは一時ファイルのみで、実測結果として登録・公開していない。観測HTTP要求はlocalhostのみで、外部通信なし。WebKitは未検証。
+- 独立コードレビューで設定・CPU・実行方式の比較経路に同種のunknown優先問題を発見。修正前RED、修正後GREENを確認し、レビュー担当者が追修正を確認して関連する追加指摘なしと報告した。
+- push後の最終HEADに対するGitHub Actionsは未確認。PR更新後に確認する。過去HEADに対するCI成功は今回の未push変更のCI成功を意味しない。
+
 ### 独立レビュー修正
 
 - 独立レビューで、評価項目の説明文が比較判定から抜けており、採点定義が異なる結果でも直接比較可能になる中程度の問題を確認した。

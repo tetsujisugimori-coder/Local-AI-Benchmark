@@ -257,9 +257,20 @@ export type Comparability = {
   cautions: string[];
 };
 
+export type ComparabilityRecord = {
+  experiment: PublicBenchmarkExperiment;
+  dataKind: PublicBenchmarkDocument["dataKind"];
+};
+
 export function assessComparability(
-  experiments: PublicBenchmarkExperiment[],
+  records: Array<PublicBenchmarkExperiment | ComparabilityRecord>,
 ): Comparability {
+  const sources = records.map((record) =>
+    "experiment" in record
+      ? record
+      : { experiment: record, dataKind: "user_recorded" as const },
+  );
+  const experiments = sources.map((source) => source.experiment);
   if (experiments.length < 2) {
     return {
       label: "直接比較不可",
@@ -277,10 +288,22 @@ export function assessComparability(
   ) => {
     if (values.some((value) => value === null)) {
       unknowns.add(`${label}が未観測または非公開です。`);
-    } else if (values.some((value) => !compareJson(value, values[0]))) {
+    }
+    const knownValues = values.filter(
+      (value): value is T => value !== null,
+    );
+    if (knownValues.some((value) => !compareJson(value, knownValues[0]))) {
       differences.add(`${label}が異なります。`);
     }
   };
+  const dataKinds = new Set(sources.map((source) => source.dataKind));
+  if (dataKinds.has("synthetic_sample") && dataKinds.has("user_recorded")) {
+    differences.add(
+      "合成例示と利用者記録は異なるデータ種別のため、性能値を直接比較できません。",
+    );
+  } else if (dataKinds.has("synthetic_sample")) {
+    cautions.add("合成例示は性能測定ではなく、参考比較に限定されます。");
+  }
   compareObserved(
     "課題ID",
     experiments.map((experiment) => knownObservation(experiment.task.id)),
@@ -370,7 +393,12 @@ export function assessComparability(
     const values = settingsByExperiment.map((settings) => settings[key]);
     if (values.some((value) => value === undefined || value === null)) {
       unknowns.add(`実行設定「${key}」が一部で未記録または非公開です。`);
-    } else if (values.some((value) => !compareJson(value, values[0]))) {
+    }
+    const knownValues = values.filter(
+      (value): value is NonNullable<typeof value> =>
+        value !== undefined && value !== null,
+    );
+    if (knownValues.some((value) => !compareJson(value, knownValues[0]))) {
       differences.add(`実行設定「${key}」が異なります。`);
     }
   }
@@ -394,17 +422,23 @@ export function assessComparability(
     );
     if (values.some((value) => value === null)) {
       unknowns.add(`${key.toUpperCase()}が一部で未観測または非公開です。`);
-    } else if (
-      values.some((value) => !compareJson(value, values[0]))
-    ) {
+    }
+    const knownValues = values.filter((value): value is string => value !== null);
+    if (knownValues.some((value) => !compareJson(value, knownValues[0]))) {
       differences.add(`${key.toUpperCase()}が異なります。`);
     }
   }
   const executionModes = hardwareValues.map((value) => value.executionMode);
   if (executionModes.some((mode) => !mode || mode === "not disclosed")) {
     unknowns.add("実行方式が一部で未観測または非公開です。");
-  } else if (
-    executionModes.some((mode) => !compareJson(mode, executionModes[0]))
+  }
+  const knownExecutionModes = executionModes.filter(
+    (mode): mode is string => Boolean(mode) && mode !== "not disclosed",
+  );
+  if (
+    knownExecutionModes.some(
+      (mode) => !compareJson(mode, knownExecutionModes[0]),
+    )
   ) {
     differences.add("実行方式が異なります。");
   }

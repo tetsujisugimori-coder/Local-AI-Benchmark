@@ -5,6 +5,7 @@ import {
   mkdir,
   mkdtemp,
   open,
+  readdir,
   readFile,
   rm,
   symlink,
@@ -479,6 +480,34 @@ test("registration does not overwrite a catalog changed after it was read", asyn
   }
 });
 
+test("registration removes a partially written JSON file when write fails", async (t) => {
+  await assertRegistrationFailure(t, "json-write");
+});
+
+test("registration removes a JSON file when close fails after a successful write", async (t) => {
+  await assertRegistrationFailure(t, "json-close");
+});
+
+test("registration removes newly written JSON when manifest write fails", async (t) => {
+  await assertRegistrationFailure(t, "manifest-write");
+});
+
+test("registration removes newly written files when manifest close fails", async (t) => {
+  await assertRegistrationFailure(t, "manifest-close");
+});
+
+test("registration removes data files when catalog temp write fails", async (t) => {
+  await assertRegistrationFailure(t, "catalog-write");
+});
+
+test("registration removes data files when catalog temp close fails", async (t) => {
+  await assertRegistrationFailure(t, "catalog-close");
+});
+
+test("registration reports rollback deletion failure without reporting success", async (t) => {
+  await assertRegistrationFailure(t, "json-close-rollback-fails");
+});
+
 test("comparability flags matching known factors but preserves unknowns and warnings", () => {
   const first = structuredClone(sampleDocument.experiments[0]);
   const second = structuredClone(first);
@@ -494,6 +523,163 @@ test("comparability flags matching known factors but preserves unknowns and warn
   const differentTask = assessComparability([first, second]);
   assert.equal(differentTask.label, "直接比較不可");
   assert.ok(differentTask.differences.some((item) => item.includes("課題バージョン")));
+});
+
+test("comparability preserves known mismatches alongside one or more unknowns", () => {
+  const first = comparableExperiment("exp-prompt-x");
+  const second = comparableExperiment("exp-prompt-y");
+  const third = comparableExperiment("exp-prompt-hidden");
+  const fourth = comparableExperiment("exp-tools-hidden");
+  first.task.prompt = { status: "observed", value: "Prompt X" };
+  second.task.prompt = { status: "observed", value: "Prompt Y" };
+  third.task.prompt = {
+    status: "not_observed",
+    reason: "Prompt is withheld.",
+  };
+  fourth.task.prompt = {
+    status: "not_observed",
+    reason: "Prompt is withheld.",
+  };
+  fourth.agent.tools = {
+    status: "not_observed",
+    reason: "Tools are withheld.",
+  };
+
+  const threeRecords = assessComparability([first, second, third]);
+  assert.equal(threeRecords.label, "直接比較不可");
+  assert.ok(threeRecords.differences.some((item) => item.includes("課題本文")));
+  assert.ok(threeRecords.unknowns.some((item) => item.includes("課題本文")));
+
+  const fourRecords = assessComparability([first, second, third, fourth]);
+  assert.equal(fourRecords.label, "直接比較不可");
+  assert.ok(fourRecords.differences.some((item) => item.includes("課題本文")));
+  assert.ok(fourRecords.unknowns.some((item) => item.includes("課題本文")));
+  assert.ok(fourRecords.unknowns.some((item) => item.includes("利用可能ツール")));
+});
+
+test("comparability distinguishes all-known agreement and unknown-only agreement", () => {
+  const first = comparableExperiment("exp-known-one");
+  const second = comparableExperiment("exp-known-two");
+  const third = comparableExperiment("exp-known-three");
+  assert.equal(assessComparability([first, second, third]).label, "直接比較可能");
+
+  second.task.prompt = {
+    status: "not_observed",
+    reason: "Prompt is withheld.",
+  };
+  const partlyUnknown = assessComparability([first, second, third]);
+  assert.equal(partlyUnknown.label, "条件差があるため参考比較");
+  assert.ok(partlyUnknown.unknowns.some((item) => item.includes("課題本文")));
+  assert.equal(partlyUnknown.differences.length, 0);
+
+  for (const experiment of [first, second, third]) {
+    experiment.task.prompt = {
+      status: "not_observed",
+      reason: "Prompt is withheld.",
+    };
+  }
+  const allUnknown = assessComparability([first, second, third]);
+  assert.equal(allUnknown.label, "条件差があるため参考比較");
+  assert.ok(allUnknown.unknowns.some((item) => item.includes("課題本文")));
+});
+
+test("comparability keeps differences across multiple conditions with unknowns", () => {
+  const first = comparableExperiment("exp-multi-diff-a");
+  const second = comparableExperiment("exp-multi-diff-b");
+  const third = comparableExperiment("exp-multi-diff-c");
+  first.task.id = { status: "observed", value: "task-a" };
+  second.task.id = { status: "observed", value: "task-b" };
+  third.task.id = {
+    status: "not_observed",
+    reason: "Task ID is withheld.",
+  };
+  second.agent.permissions = {
+    status: "observed",
+    value: "full access",
+  };
+  third.agent.permissions = {
+    status: "not_observed",
+    reason: "Permissions are withheld.",
+  };
+  third.environment.gpu = {
+    status: "not_observed",
+    reason: "GPU is withheld.",
+  };
+
+  const result = assessComparability([first, second, third]);
+  assert.equal(result.label, "直接比較不可");
+  assert.ok(result.differences.some((item) => item.includes("課題ID")));
+  assert.ok(result.differences.some((item) => item.includes("エージェント権限")));
+  assert.ok(result.unknowns.some((item) => item.includes("課題ID")));
+  assert.ok(result.unknowns.some((item) => item.includes("GPU")));
+});
+
+test("comparability preserves known settings and environment mismatches with unknowns", () => {
+  const first = comparableExperiment("exp-known-settings-a");
+  const second = comparableExperiment("exp-known-settings-b");
+  const third = comparableExperiment("exp-known-settings-hidden");
+  first.conditions.settings = { timeLimitMinutes: 30 };
+  second.conditions.settings = { timeLimitMinutes: 60 };
+  third.conditions.settings = {};
+  first.environment.cpu = { status: "observed", value: "CPU A" };
+  second.environment.cpu = { status: "observed", value: "CPU B" };
+  third.environment.cpu = {
+    status: "not_observed",
+    reason: "CPU is withheld.",
+  };
+  first.environment.executionMode = "local";
+  second.environment.executionMode = "remote";
+  third.environment.executionMode = "not disclosed";
+
+  const result = assessComparability([first, second, third]);
+  assert.equal(result.label, "直接比較不可");
+  for (const label of ["timeLimitMinutes", "CPU", "実行方式"]) {
+    assert.ok(result.differences.some((item) => item.includes(label)), label);
+    assert.ok(result.unknowns.some((item) => item.includes(label)), label);
+  }
+});
+
+test("synthetic comparisons are never classified as directly comparable", () => {
+  const first = comparableExperiment("exp-synthetic-a");
+  const second = comparableExperiment("exp-synthetic-b");
+  const synthetic = assessComparability([
+    { experiment: first, dataKind: "synthetic_sample" },
+    { experiment: second, dataKind: "synthetic_sample" },
+  ]);
+  assert.equal(synthetic.label, "条件差があるため参考比較");
+
+  const mixed = assessComparability([
+    { experiment: first, dataKind: "synthetic_sample" },
+    { experiment: second, dataKind: "user_recorded" },
+  ]);
+  assert.equal(mixed.label, "直接比較不可");
+});
+
+test("user-recorded comparisons retain conditions and synthetic comparisons retain known differences", () => {
+  const first = comparableExperiment("exp-recorded-a");
+  const second = comparableExperiment("exp-recorded-b");
+  const userRecorded = assessComparability([
+    { experiment: first, dataKind: "user_recorded" },
+    { experiment: second, dataKind: "user_recorded" },
+  ]);
+  assert.equal(userRecorded.label, "直接比較可能");
+
+  second.task.id = { status: "observed", value: "different-task" };
+  second.task.prompt = {
+    status: "not_observed",
+    reason: "Prompt is withheld.",
+  };
+  const syntheticWithDifference = assessComparability([
+    { experiment: first, dataKind: "synthetic_sample" },
+    { experiment: second, dataKind: "synthetic_sample" },
+  ]);
+  assert.equal(syntheticWithDifference.label, "直接比較不可");
+  assert.ok(
+    syntheticWithDifference.differences.some((item) => item.includes("課題ID")),
+  );
+  assert.ok(
+    syntheticWithDifference.unknowns.some((item) => item.includes("課題本文")),
+  );
 });
 
 test("comparability does not conflate zero scores, unobserved, N/A, or non-success states", () => {
@@ -813,6 +999,180 @@ async function createViewerValidationFixture(t: TestContext) {
     outputDir,
     paths: { publicDir, outputDir, generatedStaticDir },
   };
+}
+
+type RegistrationFailure =
+  | "json-write"
+  | "json-close"
+  | "manifest-write"
+  | "manifest-close"
+  | "catalog-write"
+  | "catalog-close"
+  | "json-close-rollback-fails";
+
+async function assertRegistrationFailure(
+  t: TestContext,
+  failure: RegistrationFailure,
+) {
+  const fixture = await createRegistrationFixture(t);
+  const candidate = await makeRegistrationInput(
+    fixture.root,
+    `exp-${failure}`,
+  );
+  const catalogBefore = await readFile(fixture.registration.catalogPath);
+  const jsonName = "fault-case.json";
+  const manifestName = "fault-case.manifest.json";
+  const tempPrefix = `${path.basename(fixture.registration.catalogPath)}.`;
+  const faultName =
+    failure.startsWith("json-")
+      ? jsonName
+      : failure.startsWith("manifest-")
+        ? manifestName
+        : tempPrefix;
+  const operation = failure.endsWith("-write")
+    ? "writeFile"
+    : failure.endsWith("-close")
+      ? "close"
+      : failure === "json-close-rollback-fails"
+        ? "close"
+        : null;
+  let injected = false;
+  const io = {
+    open: async (
+      filePath: Parameters<typeof open>[0],
+      flags: Parameters<typeof open>[1],
+    ) => {
+      const handle = await open(filePath, flags);
+      const basename = path.basename(String(filePath));
+      const matches = failure.startsWith("catalog-")
+        ? basename.startsWith(tempPrefix) && basename.endsWith(".tmp")
+        : basename === faultName;
+      return new Proxy(handle, {
+        get(target, property, receiver) {
+          if (
+            property === operation &&
+            matches &&
+            !injected
+          ) {
+            return async (...args: unknown[]) => {
+              injected = true;
+              if (property === "writeFile") {
+                const bytes = args[0];
+                if (!(bytes instanceof Uint8Array)) {
+                  throw new Error("Expected registration bytes.");
+                }
+                await target.writeFile(bytes.subarray(0, 5));
+              } else {
+                await target.close();
+              }
+              throw new Error(`simulated ${failure}`);
+            };
+          }
+          const value = Reflect.get(target, property, receiver);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      });
+    },
+    rm: async (
+      filePath: Parameters<typeof rm>[0],
+      options?: Parameters<typeof rm>[1],
+    ) => {
+      if (
+        failure === "json-close-rollback-fails" &&
+        path.basename(String(filePath)) === jsonName
+      ) {
+        throw new Error("simulated rollback deletion failure");
+      }
+      return rm(filePath, options);
+    },
+  };
+
+  await assert.rejects(
+    registerPublicBenchmark({
+      ...fixture.registration,
+      id: "fault-case",
+      jsonBytes: new Uint8Array(await readFile(candidate.jsonPath)),
+      manifestBytes: new Uint8Array(await readFile(candidate.manifestPath)),
+      reviewedBy: "reviewer",
+      reviewNote: "Reviewed test fixture",
+      io,
+    }),
+    failure === "json-close-rollback-fails"
+      ? /rollback failed/
+      : new RegExp(`simulated ${failure}`),
+  );
+  assert.equal(injected, true);
+  assert.deepEqual(
+    await readFile(fixture.registration.catalogPath),
+    catalogBefore,
+  );
+  const jsonPath = path.join(fixture.registration.publicDir, "data", jsonName);
+  const manifestPath = path.join(
+    fixture.registration.publicDir,
+    "data",
+    manifestName,
+  );
+  if (failure === "json-close-rollback-fails") {
+    assert.equal((await lstat(jsonPath)).isFile(), true);
+  } else {
+    await assert.rejects(lstat(jsonPath));
+  }
+  await assert.rejects(lstat(manifestPath));
+  const lockPath = `${fixture.registration.catalogPath}.lock`;
+  await assert.rejects(lstat(lockPath));
+  if (failure.startsWith("catalog-")) {
+    const files = await readdir(path.dirname(fixture.registration.catalogPath));
+    assert.deepEqual(files.sort(), ["v1.json"]);
+  }
+}
+
+function comparableExperiment(id: string): PublicBenchmarkExperiment {
+  const experiment = structuredClone(sampleDocument.experiments[0]);
+  experiment.id = id;
+  experiment.task.id = { status: "observed", value: "shared-task" };
+  experiment.task.setId = { status: "observed", value: "shared-set" };
+  experiment.task.setVersion = { status: "observed", value: "1.0.0" };
+  experiment.task.prompt = { status: "observed", value: "Shared prompt." };
+  experiment.agent.tools = {
+    status: "observed",
+    value: ["editor", "test runner"],
+  };
+  experiment.agent.permissions = {
+    status: "observed",
+    value: "workspace only",
+  };
+  experiment.agent.humanIntervention = {
+    status: "observed",
+    value: "initial instruction only",
+  };
+  experiment.evaluation.protocolId = {
+    status: "observed",
+    value: "shared-rubric",
+  };
+  experiment.evaluation.protocolVersion = {
+    status: "observed",
+    value: "1.0.0",
+  };
+  experiment.evaluation.criteria = experiment.evaluation.criteria.map(
+    (criterion) => ({
+      ...criterion,
+      description: { status: "observed", value: `Description ${criterion.id}` },
+    }),
+  );
+  experiment.conditions.settings = { timeoutSeconds: 60 };
+  experiment.environment.os = { status: "observed", value: "Windows" };
+  experiment.environment.cpu = { status: "observed", value: "CPU" };
+  experiment.environment.gpu = { status: "observed", value: "GPU" };
+  experiment.environment.memory = { status: "observed", value: "16 GiB" };
+  experiment.environment.executionMode = "local";
+  experiment.contamination = {
+    status: "none_detected",
+    limitations: [],
+  };
+  experiment.execution.status = "completed";
+  experiment.execution.taskOutcome = "success";
+  experiment.execution.scoringStatus = "scored";
+  return experiment;
 }
 
 async function createRegistrationFixture(t: TestContext) {

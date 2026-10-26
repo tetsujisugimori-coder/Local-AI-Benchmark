@@ -272,7 +272,13 @@ export function BenchmarkViewer() {
     selected.includes(record.key),
   );
   const comparison = useMemo(
-    () => assessComparability(selectedRecords.map((record) => record.experiment)),
+    () =>
+      assessComparability(
+        selectedRecords.map((record) => ({
+          experiment: record.experiment,
+          dataKind: record.dataKind,
+        })),
+      ),
     [selectedRecords],
   );
 
