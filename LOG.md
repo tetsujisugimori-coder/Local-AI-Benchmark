@@ -574,7 +574,7 @@
 - `npm run build`、`npm run viewer:build`、`npm run viewer:validate`、`git diff --check`はすべて成功。静的成果物はcatalog 1件・experiment 1件、31ファイルを検証した。
 - Edge 156実ブラウザでproduction静的成果物をローカルNode HTTP server経由で確認。375px/390pxではdocument幅がviewport幅と一致、1280pxでは1265pxで横幅超過なし。検証用の一時JSON/manifestを使い、Spaceキーで選択した複数記録で既知の実行設定・CPU・実行方式の差と未観測条件を同時表示し、「直接比較不可」となることを確認。テスト用データは一時ファイルのみで、実測結果として登録・公開していない。観測HTTP要求はlocalhostのみで、外部通信なし。WebKitは未検証。
 - 独立コードレビューで設定・CPU・実行方式の比較経路に同種のunknown優先問題を発見。修正前RED、修正後GREENを確認し、レビュー担当者が追修正を確認して関連する追加指摘なしと報告した。
-- push後の最終HEADに対するGitHub Actionsは未確認。PR更新後に確認する。過去HEADに対するCI成功は今回の未push変更のCI成功を意味しない。
+- Implementation commit `afd6ec8f5ded1e5b681a1b0929d875c0906d2be6`のGitHub Actions run `40322735802`はLinuxで成功（`npm ci`、check、root build、viewer build、viewer validation）。runnerからNode.js 20 action/ubuntu-latest移行警告あり。今回のLOG追記は同検証後の記録コミットとなるため、そのpush後CIも別途確認する。WebKitは未検証。
 
 ### 独立レビュー修正
 
