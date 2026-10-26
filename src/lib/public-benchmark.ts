@@ -278,6 +278,14 @@ function validatePublicReference(reference: string): URL {
   return url;
 }
 
+export function safePublicReference(reference: string): string | null {
+  try {
+    return validatePublicReference(reference).href;
+  } catch {
+    return null;
+  }
+}
+
 function validatePhaseZeroCriteria(
   protocolId: unknown,
   protocolVersion: unknown,
